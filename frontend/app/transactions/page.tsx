@@ -174,7 +174,7 @@ function TransactionsContent() {
             <tbody>
               {items.map((tx) => (
                 <tr key={tx.id} className="cursor-pointer" onClick={() => openDetail(tx)}>
-                  <td className="font-latin">{toPersianDigits(tx.id)}</td>
+                  <td>{toPersianDigits(tx.id)}</td>
                   <td>
                     <div className="font-medium">{tx.user?.full_name || "—"}</div>
                     <div className="text-text-muted text-xs">@{tx.user?.username || tx.user_id}</div>

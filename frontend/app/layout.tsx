@@ -9,10 +9,20 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fa" dir="rtl" className="dark">
-      <body>
+    <html lang="fa" dir="rtl" className="dark font-sans">
+      <body className="font-sans antialiased">
         {children}
-        <Toaster position="top-left" toastOptions={{ style: { background: "#1a1d27", color: "#f1f5f9", border: "1px solid #2a2d3e" } }} />
+        <Toaster
+          position="top-left"
+          toastOptions={{
+            style: {
+              background: "#1a1d27",
+              color: "#f1f5f9",
+              border: "1px solid #2a2d3e",
+              fontFamily: "Vazirmatn, Tahoma, sans-serif",
+            },
+          }}
+        />
       </body>
     </html>
   );
