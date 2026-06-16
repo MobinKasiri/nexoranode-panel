@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from panel.auth.dependencies import get_current_admin
 from panel.auth.security import hash_password
-from panel.config import get_settings, load_plans, save_plans
+from panel.config import get_settings, load_plans, plans_diagnostics, save_plans
 from panel.db.models import AdminUser
 from panel.db.session import get_db
 from panel.services.audit import log_action
@@ -27,7 +27,17 @@ class CreateAdminBody(BaseModel):
 
 @router.get("/plans")
 async def get_plans(_admin: AdminUser = Depends(get_current_admin)):
-    return load_plans()
+    try:
+        return load_plans()
+    except OSError as exc:
+        logger.exception("Failed to load plans")
+        raise HTTPException(500, f"خطا در بارگذاری قیمت‌ها: {exc}") from exc
+
+
+@router.get("/plans/debug")
+async def get_plans_debug(_admin: AdminUser = Depends(get_current_admin)):
+    """Path/mount diagnostics for plans.json (admin only)."""
+    return plans_diagnostics()
 
 
 @router.put("/plans")

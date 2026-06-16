@@ -6,11 +6,11 @@ services:
       - "127.0.0.1:8000:8000"
     env_file: .env
     environment:
-      # Override legacy .env value — never write under read-only /bot
-      PLANS_FILE: /data/plans.json
+      PLANS_FILE: /data/plans/plans.json
     volumes:
       - ${BOT_ROOT_HOST:-/opt/nexoranode-bot}:/bot:ro
-      - ${PLANS_FILE_HOST:-${BOT_ROOT_HOST:-/opt/nexoranode-bot}/app/data/plans.json}:/data/plans.json:rw
+      # Mount the whole data dir (not a single file — Docker creates a dir if file missing)
+      - ${PLANS_DIR_HOST:-${BOT_ROOT_HOST:-/opt/nexoranode-bot}/app/data}:/data/plans:rw
     restart: unless-stopped
     networks:
       - nexora_net
