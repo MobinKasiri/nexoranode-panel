@@ -32,3 +32,5 @@ services:
 networks:
   nexora_net:
     external: true
+    # Bot compose from deploy/ creates "deploy_nexora_net" unless bot uses name: nexora_net
+    name: ${NEXORA_DOCKER_NETWORK:-deploy_nexora_net}
