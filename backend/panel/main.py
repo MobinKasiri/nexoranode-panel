@@ -22,7 +22,7 @@ from panel.routers import (
     discount,
     reports,
     server,
-    settings,
+    settings as settings_router,
     transactions,
     users,
 )
@@ -62,14 +62,14 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    settings = get_settings()
+    cfg = get_settings()
     app = FastAPI(title="Nexoranode Admin API", version="1.0.0", lifespan=lifespan)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.FRONTEND_URL, "http://localhost:3000"],
+        allow_origins=[cfg.FRONTEND_URL, "http://localhost:3000"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -84,7 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(broadcast.router)
     app.include_router(reports.router)
     app.include_router(server.router)
-    app.include_router(settings.router)
+    app.include_router(settings_router.router)
 
     @app.get("/health")
     async def health():
