@@ -2,7 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700&display=swap');
+/* Vazir — Persian UI font */
+@font-face {
+  font-family: Vazir;
+  src: url("https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/Vazir.woff2") format("woff2"),
+       url("https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/Vazir.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: Vazir;
+  src: url("https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/Vazir-Bold.woff2") format("woff2"),
+       url("https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/Vazir-Bold.woff") format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: Vazir;
+  src: url("https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/Vazir-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   --background: #0f1117;
@@ -22,15 +47,49 @@
 
 * { box-sizing: border-box; }
 
-html { direction: rtl; }
+html { direction: rtl; scroll-behavior: smooth; }
 
 body {
   color: var(--text-primary);
   background: var(--background);
-  font-family: 'Vazirmatn', 'Inter', sans-serif;
+  font-family: Vazir, Tahoma, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-.font-latin { font-family: 'Inter', sans-serif; direction: ltr; }
+.font-latin { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; direction: ltr; }
+
+@layer components {
+  .data-table {
+    @apply w-full text-sm;
+  }
+  .data-table thead tr {
+    @apply border-b border-border bg-background/40;
+  }
+  .data-table th {
+    @apply p-3 text-right text-text-muted font-medium text-xs uppercase tracking-wide whitespace-nowrap;
+  }
+  .data-table td {
+    @apply p-3 align-middle;
+  }
+  .data-table tbody tr {
+    @apply border-b border-border/40 transition-colors;
+  }
+  .data-table tbody tr:hover {
+    @apply bg-surface-hover/50;
+  }
+  .panel-slide {
+    @apply fixed inset-y-0 left-0 z-50 w-full max-w-md bg-surface border-r border-border shadow-2xl overflow-y-auto;
+  }
+  .search-input-wrap {
+    @apply relative;
+  }
+  .search-input-wrap svg {
+    @apply absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none;
+  }
+  .search-input-wrap input {
+    @apply pr-10;
+  }
+}
 
 @layer utilities {
   .text-balance { text-wrap: balance; }

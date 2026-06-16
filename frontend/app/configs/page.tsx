@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { RefreshCw, Shield } from "lucide-react";
 import { AppShell } from "@/components/layout/Sidebar";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { api } from "@/lib/api";
 import { formatBytes, formatDate, toPersianDigits, trafficBarColor, trafficPercent } from "@/lib/utils";
 import type { VPNConfigItem } from "@/types";
@@ -16,7 +19,11 @@ export default function ConfigsPage() {
   const [syncing, setSyncing] = useState(false);
 
   const load = () => {
-    api.get<{ items: VPNConfigItem[] }>("/configs").then((d) => setItems(d.items)).finally(() => setLoading(false));
+    setLoading(true);
+    api
+      .get<{ items: VPNConfigItem[] }>("/configs")
+      .then((d) => setItems(d.items))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, []);
@@ -38,7 +45,7 @@ export default function ConfigsPage() {
   };
 
   const del = async (id: number) => {
-    if (!confirm("حذف سرویس؟")) return;
+    if (!confirm("آیا از حذف این سرویس مطمئن هستید؟")) return;
     await api.delete(`/configs/${id}`);
     toast.success("حذف شد");
     load();
@@ -46,39 +53,60 @@ export default function ConfigsPage() {
 
   return (
     <AppShell>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">مدیریت سرویس‌ها</h1>
-        <Button onClick={syncAll} disabled={syncing}>{syncing ? "همگام‌سازی..." : "همگام‌سازی همه"}</Button>
-      </div>
+      <PageHeader
+        title="مدیریت سرویس‌ها"
+        description="مشاهده و همگام‌سازی کانفیگ‌های VPN کاربران"
+        actions={
+          <Button onClick={syncAll} disabled={syncing} size="sm">
+            <RefreshCw size={16} className={`ml-2 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "همگام‌سازی..." : "همگام‌سازی همه"}
+          </Button>
+        }
+      />
+
       <Card className="overflow-x-auto p-0">
-        {loading ? <Skeleton className="h-48 m-4" /> : (
-          <table className="w-full text-sm">
+        {loading ? (
+          <div className="p-4 space-y-3">{[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-12" />)}</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={Shield} title="سرویسی یافت نشد" description="هنوز کانفیگی ثبت نشده یا فیلتر نتیجه‌ای ندارد" />
+        ) : (
+          <table className="data-table">
             <thead>
-              <tr className="border-b border-border text-text-muted">
-                <th className="p-3 text-right">نام</th>
-                <th className="p-3 text-right">کاربر</th>
-                <th className="p-3 text-right">مصرف</th>
-                <th className="p-3 text-right">انقضا</th>
-                <th className="p-3 text-right">عملیات</th>
+              <tr>
+                <th>نام</th>
+                <th>کاربر</th>
+                <th>مصرف</th>
+                <th>انقضا</th>
+                <th>عملیات</th>
               </tr>
             </thead>
             <tbody>
               {items.map((c) => {
                 const pct = trafficPercent(c.traffic_used_bytes, c.traffic_limit_bytes);
                 return (
-                  <tr key={c.id} className="border-b border-border/50">
-                    <td className="p-3">{c.service_name}</td>
-                    <td className="p-3">@{c.username || c.user_id}</td>
-                    <td className="p-3">
-                      <div className="h-2 w-20 rounded-full bg-border overflow-hidden inline-block">
-                        <div className={`h-full ${trafficBarColor(pct)}`} style={{ width: `${pct}%` }} />
+                  <tr key={c.id}>
+                    <td className="font-medium">{c.service_name}</td>
+                    <td className="text-text-secondary">@{c.username || c.user_id}</td>
+                    <td>
+                      <div className="flex items-center gap-2 min-w-[140px]">
+                        <div className="h-2 flex-1 max-w-24 rounded-full bg-border overflow-hidden">
+                          <div className={`h-full ${trafficBarColor(pct)}`} style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-xs text-text-muted whitespace-nowrap">
+                          {formatBytes(c.traffic_used_bytes)}/{formatBytes(c.traffic_limit_bytes)}
+                        </span>
                       </div>
-                      <span className="text-xs text-text-muted mr-2">{formatBytes(c.traffic_used_bytes)}/{formatBytes(c.traffic_limit_bytes)}</span>
                     </td>
-                    <td className="p-3">{formatDate(c.expiry_date)}</td>
-                    <td className="p-3">
-                      <Button size="sm" variant="outline" onClick={() => toggle(c.id)}>{c.is_active ? "⏸" : "▶"}</Button>
-                      <Button size="sm" variant="danger" className="mr-1" onClick={() => del(c.id)}>🗑</Button>
+                    <td className="text-text-secondary whitespace-nowrap">{formatDate(c.expiry_date)}</td>
+                    <td>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" onClick={() => toggle(c.id)}>
+                          {c.is_active ? "غیرفعال" : "فعال"}
+                        </Button>
+                        <Button size="sm" variant="danger" onClick={() => del(c.id)}>
+                          حذف
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 );

@@ -8,6 +8,10 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["Vazir", "Tahoma", "system-ui", "sans-serif"],
+        latin: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+      },
       colors: {
         background: "#0f1117",
         surface: "#1a1d27",
@@ -22,10 +26,6 @@ const config: Config = {
         "text-primary": "#f1f5f9",
         "text-secondary": "#94a3b8",
         "text-muted": "#64748b",
-      },
-      fontFamily: {
-        sans: ["Vazirmatn", "Inter", "sans-serif"],
-        latin: ["Inter", "sans-serif"],
       },
     },
   },

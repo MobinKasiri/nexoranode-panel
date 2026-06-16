@@ -34,9 +34,12 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-primary">Nexoranode</h1>
+      <Card className="w-full max-w-md shadow-xl shadow-black/20">
+        <div className="text-center mb-8 pt-2">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/15 text-primary text-2xl font-bold mb-4">
+            N
+          </div>
+          <h1 className="text-2xl font-bold text-text-primary">Nexoranode</h1>
           <p className="text-text-muted text-sm mt-2">پنل مدیریت نکسورانود</p>
         </div>
         <form onSubmit={submit} className="space-y-4">

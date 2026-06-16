@@ -2,15 +2,19 @@
 
 import { useCallback, useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Eye, Check, X, Download, Search } from "lucide-react";
+import { Eye, Check, X, Download, Search, Receipt, XCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import { AppShell } from "@/components/layout/Sidebar";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterChips } from "@/components/ui/filter-chips";
+import { useDebounce } from "@/hooks/use-debounce";
 import { api } from "@/lib/api";
 import { formatDate, formatToman, toPersianDigits } from "@/lib/utils";
 import type { Transaction } from "@/types";
@@ -22,6 +26,12 @@ const STATUS_FILTERS = [
   { key: "rejected", label: "رد شده" },
 ];
 
+const TYPE_LABELS: Record<string, string> = {
+  purchase: "خرید پلن",
+  renewal: "تمدید",
+  balance: "شارژ کیف پول",
+};
+
 function TransactionsContent() {
   const searchParams = useSearchParams();
   const [items, setItems] = useState<Transaction[]>([]);
@@ -30,8 +40,10 @@ function TransactionsContent() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(searchParams.get("status") || "");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [detail, setDetail] = useState<Transaction | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [showApprove, setShowApprove] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -43,7 +55,7 @@ function TransactionsContent() {
     try {
       const params = new URLSearchParams();
       if (status) params.set("status", status);
-      if (search) params.set("search", search);
+      if (debouncedSearch) params.set("search", debouncedSearch);
       const data = await api.get<{ items: Transaction[]; total: number; pending_count: number }>(
         `/transactions?${params}`
       );
@@ -55,17 +67,27 @@ function TransactionsContent() {
     } finally {
       setLoading(false);
     }
-  }, [status, search]);
+  }, [status, debouncedSearch]);
 
   useEffect(() => { load(); }, [load]);
 
+  const closePanel = () => {
+    setSelected(null);
+    setDetail(null);
+    setDetailLoading(false);
+  };
+
   const openDetail = async (tx: Transaction) => {
     setSelected(tx);
+    setDetail(null);
+    setDetailLoading(true);
     try {
       const d = await api.get<Transaction>(`/transactions/${tx.id}`);
       setDetail(d);
     } catch {
       setDetail(tx);
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -74,10 +96,9 @@ function TransactionsContent() {
     setActionLoading(true);
     try {
       await api.post(`/transactions/${selected.id}/approve`);
-      toast.success("✅ تراکنش تایید شد");
+      toast.success("تراکنش تایید شد");
       setShowApprove(false);
-      setSelected(null);
-      setDetail(null);
+      closePanel();
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "خطا");
@@ -94,8 +115,7 @@ function TransactionsContent() {
       toast.success("تراکنش رد شد");
       setShowReject(false);
       setRejectReason("");
-      setSelected(null);
-      setDetail(null);
+      closePanel();
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "خطا");
@@ -104,71 +124,97 @@ function TransactionsContent() {
     }
   };
 
+  const filterOptions = STATUS_FILTERS.map((f) =>
+    f.key === "pending" ? { ...f, badge: pendingCount } : f
+  );
+
   return (
     <AppShell>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <h1 className="text-2xl font-bold">تراکنش‌ها</h1>
-        <Button variant="outline" size="sm" onClick={() => api.exportTransactions(status || undefined)}>
-          <Download size={16} className="ml-2" /> خروجی Excel
-        </Button>
-      </div>
+      <PageHeader
+        title="تراکنش‌ها"
+        description="بررسی و تایید پرداخت‌های کاربران"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => api.exportTransactions(status || undefined)}>
+            <Download size={16} className="ml-2" /> خروجی Excel
+          </Button>
+        }
+      />
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        {STATUS_FILTERS.map((f) => (
-          <button key={f.key} onClick={() => setStatus(f.key)}
-            className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-              status === f.key ? "bg-primary/20 border-primary text-primary" : "border-border text-text-secondary hover:bg-surface-hover"
-            }`}>
-            {f.label}{f.key === "pending" && pendingCount > 0 ? ` ● ${toPersianDigits(pendingCount)}` : ""}
-          </button>
-        ))}
-      </div>
-
-      <div className="relative mb-4">
-        <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
-        <Input placeholder="جستجو..." value={search} onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && load()} className="pr-10" />
+      <div className="space-y-4 mb-6">
+        <FilterChips options={filterOptions} value={status} onChange={setStatus} />
+        <div className="search-input-wrap max-w-md">
+          <Search size={16} />
+          <Input
+            placeholder="جستجو بر اساس نام، یوزرنیم یا آیدی..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
       </div>
 
       <Card className="overflow-x-auto p-0">
         {loading ? (
-          <div className="p-4 space-y-3">{[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12" />)}</div>
+          <div className="p-4 space-y-3">{[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-12" />)}</div>
         ) : items.length === 0 ? (
-          <p className="p-8 text-center text-text-muted">تراکنشی یافت نشد</p>
+          <EmptyState icon={Receipt} title="تراکنشی یافت نشد" description="فیلترها را تغییر دهید یا جستجو را پاک کنید" />
         ) : (
-          <table className="w-full text-sm">
+          <table className="data-table">
             <thead>
-              <tr className="border-b border-border text-text-muted">
-                <th className="p-3 text-right">#</th>
-                <th className="p-3 text-right">کاربر</th>
-                <th className="p-3 text-right">پلن</th>
-                <th className="p-3 text-right">مبلغ</th>
-                <th className="p-3 text-right">روش</th>
-                <th className="p-3 text-right">زمان</th>
-                <th className="p-3 text-right">وضعیت</th>
-                <th className="p-3 text-right">عملیات</th>
+              <tr>
+                <th>#</th>
+                <th>کاربر</th>
+                <th>پلن</th>
+                <th>مبلغ</th>
+                <th>روش</th>
+                <th>زمان</th>
+                <th>وضعیت</th>
+                <th>عملیات</th>
               </tr>
             </thead>
             <tbody>
               {items.map((tx) => (
-                <tr key={tx.id} className="border-b border-border/50 hover:bg-surface-hover cursor-pointer" onClick={() => openDetail(tx)}>
-                  <td className="p-3 font-latin">{toPersianDigits(tx.id)}</td>
-                  <td className="p-3">
-                    <div>{tx.user?.full_name}</div>
+                <tr key={tx.id} className="cursor-pointer" onClick={() => openDetail(tx)}>
+                  <td className="font-latin">{toPersianDigits(tx.id)}</td>
+                  <td>
+                    <div className="font-medium">{tx.user?.full_name || "—"}</div>
                     <div className="text-text-muted text-xs">@{tx.user?.username || tx.user_id}</div>
                   </td>
-                  <td className="p-3">{tx.plan ? `${tx.plan.gb}GB` : tx.type}</td>
-                  <td className="p-3">{formatToman(tx.payment_amount || tx.amount)}</td>
-                  <td className="p-3">{tx.payment_method === "card" ? "کارت" : "کیف پول"}</td>
-                  <td className="p-3 text-text-secondary">{formatDate(tx.created_at)}</td>
-                  <td className="p-3"><Badge status={tx.status} /></td>
-                  <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                  <td>
+                    {tx.plan ? (
+                      <span>{toPersianDigits(tx.plan.gb)} گیگ / {toPersianDigits(tx.plan.days)} روز</span>
+                    ) : (
+                      <span className="text-text-muted">{TYPE_LABELS[tx.type] || tx.type}</span>
+                    )}
+                  </td>
+                  <td className="font-medium">{formatToman(tx.payment_amount || tx.amount)}</td>
+                  <td>{tx.payment_method === "card" ? "کارت" : "کیف پول"}</td>
+                  <td className="text-text-secondary whitespace-nowrap">{formatDate(tx.created_at)}</td>
+                  <td><Badge status={tx.status} /></td>
+                  <td onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => openDetail(tx)}><Eye size={16} /></Button>
+                      <Button size="icon" variant="ghost" aria-label="مشاهده" onClick={() => openDetail(tx)}>
+                        <Eye size={16} />
+                      </Button>
                       {tx.status === "pending" && (
                         <>
-                          <Button size="icon" variant="ghost" className="text-success" onClick={() => { setSelected(tx); setShowApprove(true); }}><Check size={16} /></Button>
-                          <Button size="icon" variant="ghost" className="text-danger" onClick={() => { setSelected(tx); setShowReject(true); }}><X size={16} /></Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-success"
+                            aria-label="تایید"
+                            onClick={() => { setSelected(tx); setShowApprove(true); }}
+                          >
+                            <Check size={16} />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-danger"
+                            aria-label="رد"
+                            onClick={() => { setSelected(tx); setShowReject(true); }}
+                          >
+                            <X size={16} />
+                          </Button>
                         </>
                       )}
                     </div>
@@ -179,49 +225,79 @@ function TransactionsContent() {
           </table>
         )}
       </Card>
-      <p className="text-text-muted text-xs mt-2">{toPersianDigits(total)} تراکنش</p>
+      {!loading && items.length > 0 && (
+        <p className="text-text-muted text-xs mt-3">{toPersianDigits(total)} تراکنش</p>
+      )}
 
-      {/* Slide-in panel */}
       {selected && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black/50" onClick={() => { setSelected(null); setDetail(null); }} />
-          <div className="w-full max-w-[480px] bg-surface border-r border-border h-full overflow-y-auto p-6">
-            <h2 className="text-lg font-bold mb-4">تراکنش #{toPersianDigits(selected.id)}</h2>
-            {detail && (
-              <div className="space-y-4 text-sm">
-                <Section title="اطلاعات کاربر">
-                  <Row label="نام" value={detail.user?.full_name} />
-                  <Row label="یوزرنیم" value={detail.user?.username ? `@${detail.user.username}` : "—"} />
-                  <Row label="آیدی" value={String(detail.user?.tg_id)} />
-                  <Row label="موجودی" value={formatToman(detail.user?.balance || 0)} />
-                  <Row label="خریدهای قبلی" value={toPersianDigits(detail.user_purchase_count || 0)} />
-                </Section>
-                <Section title="جزئیات تراکنش">
-                  <Row label="نوع" value={detail.type} />
-                  <Row label="پلن" value={detail.plan ? `${detail.plan.tier_name || ""} ${detail.plan.gb}GB / ${detail.plan.days} روز` : "—"} />
-                  <Row label="مبلغ" value={formatToman(detail.payment_amount || detail.amount)} />
-                  {detail.discount_code && <Row label="تخفیف" value={`${detail.discount_code} (-${formatToman(detail.discount_amount)})`} />}
-                  <Row label="روش" value={detail.payment_method === "card" ? "کارت به کارت" : "کیف پول"} />
-                  <Row label="زمان" value={formatDate(detail.created_at)} />
-                  {detail.service_name && <Row label="نام سرویس" value={detail.service_name} />}
-                </Section>
-                {detail.has_receipt && (
-                  <Section title="تصویر رسید">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`/api/transactions/${detail.id}/receipt`}
-                      alt="رسید"
-                      className="w-full rounded-lg cursor-zoom-in border border-border"
-                      onClick={() => setLightbox(true)}
-                    />
+          <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={closePanel} aria-hidden />
+          <div className="panel-slide">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 p-4 border-b border-border bg-surface/95 backdrop-blur">
+              <h2 className="text-lg font-bold">تراکنش #{toPersianDigits(selected.id)}</h2>
+              <button
+                type="button"
+                onClick={closePanel}
+                className="p-2 rounded-lg hover:bg-surface-hover text-text-muted"
+                aria-label="بستن"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {detailLoading ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-6 w-1/2" />
+                  <Skeleton className="h-24" />
+                  <Skeleton className="h-24" />
+                </div>
+              ) : detail ? (
+                <div className="space-y-6 text-sm">
+                  <Section title="اطلاعات کاربر">
+                    <Row label="نام" value={detail.user?.full_name} />
+                    <Row label="یوزرنیم" value={detail.user?.username ? `@${detail.user.username}` : "—"} />
+                    <Row label="آیدی" value={String(detail.user?.tg_id)} />
+                    <Row label="موجودی" value={formatToman(detail.user?.balance || 0)} />
+                    <Row label="خریدهای قبلی" value={toPersianDigits(detail.user_purchase_count || 0)} />
                   </Section>
-                )}
-                {detail.status === "pending" && (
-                  <div className="flex gap-2 pt-4">
-                    <Button variant="success" className="flex-1" onClick={() => setShowApprove(true)}>✅ تایید</Button>
-                    <Button variant="danger" className="flex-1" onClick={() => setShowReject(true)}>❌ رد</Button>
-                  </div>
-                )}
+                  <Section title="جزئیات تراکنش">
+                    <Row label="نوع" value={TYPE_LABELS[detail.type] || detail.type} />
+                    <Row
+                      label="پلن"
+                      value={
+                        detail.plan
+                          ? `${detail.plan.tier_name || ""} ${toPersianDigits(detail.plan.gb)} گیگ / ${toPersianDigits(detail.plan.days)} روز`
+                          : "—"
+                      }
+                    />
+                    <Row label="مبلغ" value={formatToman(detail.payment_amount || detail.amount)} />
+                    {detail.discount_code && (
+                      <Row label="تخفیف" value={`${detail.discount_code} (-${formatToman(detail.discount_amount)})`} />
+                    )}
+                    <Row label="روش" value={detail.payment_method === "card" ? "کارت به کارت" : "کیف پول"} />
+                    <Row label="زمان" value={formatDate(detail.created_at)} />
+                    {detail.service_name && <Row label="نام سرویس" value={detail.service_name} />}
+                  </Section>
+                  {detail.has_receipt && (
+                    <Section title="تصویر رسید">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`/api/transactions/${detail.id}/receipt`}
+                        alt="رسید"
+                        className="w-full rounded-lg cursor-zoom-in border border-border hover:border-primary/50 transition-colors"
+                        onClick={() => setLightbox(true)}
+                      />
+                    </Section>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            {detail?.status === "pending" && !detailLoading && (
+              <div className="sticky bottom-0 p-4 border-t border-border bg-surface/95 backdrop-blur flex gap-2">
+                <Button variant="success" className="flex-1" onClick={() => setShowApprove(true)}>تایید</Button>
+                <Button variant="danger" className="flex-1" onClick={() => setShowReject(true)}>رد</Button>
               </div>
             )}
           </div>
@@ -229,26 +305,44 @@ function TransactionsContent() {
       )}
 
       {lightbox && selected && (
-        <div className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4" onClick={() => setLightbox(false)}>
+        <div
+          className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightbox(false)}
+          role="dialog"
+          aria-label="نمایش رسید"
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`/api/transactions/${selected.id}/receipt`} alt="رسید" className="max-w-full max-h-full object-contain" />
+          <img
+            src={`/api/transactions/${selected.id}/receipt`}
+            alt="رسید"
+            className="max-w-full max-h-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
 
       <Modal open={showApprove} onOpenChange={setShowApprove} title="تایید تراکنش">
         <p className="text-text-secondary text-sm mb-4">آیا مطمئن هستید؟ سرویس برای کاربر ایجاد می‌شود.</p>
         <div className="flex gap-2">
-          <Button variant="success" onClick={approve} disabled={actionLoading}>{actionLoading ? "..." : "بله، تایید کن"}</Button>
+          <Button variant="success" onClick={approve} disabled={actionLoading}>
+            {actionLoading ? "در حال تایید..." : "بله، تایید کن"}
+          </Button>
           <Button variant="outline" onClick={() => setShowApprove(false)}>انصراف</Button>
         </div>
       </Modal>
 
       <Modal open={showReject} onOpenChange={setShowReject} title="رد تراکنش">
         <label className="text-sm text-text-secondary block mb-2">دلیل رد (اختیاری)</label>
-        <textarea className="w-full rounded-lg border border-border bg-background p-3 text-sm mb-4 min-h-[80px]"
-          value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+        <textarea
+          className="w-full rounded-lg border border-border bg-background p-3 text-sm mb-4 min-h-[80px] focus:outline-none focus:ring-2 focus:ring-primary/40"
+          value={rejectReason}
+          onChange={(e) => setRejectReason(e.target.value)}
+          placeholder="مثلاً: مبلغ نادرست یا رسید نامعتبر"
+        />
         <div className="flex gap-2">
-          <Button variant="danger" onClick={reject} disabled={actionLoading}>رد کردن</Button>
+          <Button variant="danger" onClick={reject} disabled={actionLoading}>
+            {actionLoading ? "در حال رد..." : "رد کردن"}
+          </Button>
           <Button variant="outline" onClick={() => setShowReject(false)}>انصراف</Button>
         </div>
       </Modal>
@@ -257,18 +351,27 @@ function TransactionsContent() {
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <div><h3 className="font-semibold text-text-primary mb-2">{title}</h3><div className="space-y-1">{children}</div></div>;
+  return (
+    <div>
+      <h3 className="font-semibold text-text-primary mb-3 pb-2 border-b border-border/50">{title}</h3>
+      <div className="space-y-2">{children}</div>
+    </div>
+  );
 }
 
 function Row({ label, value }: { label: string; value?: string }) {
   return (
-    <div className="flex justify-between gap-4">
-      <span className="text-text-muted">{label}</span>
+    <div className="flex justify-between gap-4 py-1">
+      <span className="text-text-muted shrink-0">{label}</span>
       <span className="text-left font-latin">{value || "—"}</span>
     </div>
   );
 }
 
 export default function TransactionsPage() {
-  return <Suspense fallback={<AppShell><Skeleton className="h-64" /></AppShell>}><TransactionsContent /></Suspense>;
+  return (
+    <Suspense fallback={<AppShell><Skeleton className="h-64" /></AppShell>}>
+      <TransactionsContent />
+    </Suspense>
+  );
 }

@@ -63,7 +63,12 @@ export function Sidebar() {
 
   return (
     <>
-      <button className="lg:hidden fixed top-4 right-4 z-40 p-2 rounded-lg bg-surface border border-border" onClick={() => setMobileOpen(true)}>
+      <button
+        type="button"
+        aria-label="منو"
+        className="lg:hidden fixed top-4 right-4 z-40 p-2.5 rounded-xl bg-surface border border-border shadow-lg"
+        onClick={() => setMobileOpen(true)}
+      >
         <Menu size={20} />
       </button>
       <aside className="hidden lg:flex w-64 flex-col border-l border-border bg-surface min-h-screen fixed right-0 top-0">
@@ -86,7 +91,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="lg:mr-64 p-4 lg:p-6 pt-16 lg:pt-6">{children}</main>
+      <main className="lg:mr-64 p-4 lg:p-8 pt-16 lg:pt-8">
+        <div className="mx-auto max-w-7xl">{children}</div>
+      </main>
     </div>
   );
 }
