@@ -32,7 +32,7 @@ export default function SettingsPage() {
     setSavingPlans(true);
     try {
       await api.put("/settings/plans", plansData);
-      toast.success("قیمت‌ها ذخیره شد");
+      toast.success("قیمت‌ها ذخیره شد — ربات به‌صورت خودکار به‌روز می‌شود");
     } catch {
       toast.error("خطا در ذخیره قیمت‌ها");
     } finally {

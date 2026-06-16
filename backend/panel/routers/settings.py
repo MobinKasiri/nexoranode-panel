@@ -71,7 +71,13 @@ async def update_plans(
         raise HTTPException(500, f"خطا در ذخیره قیمت‌ها: {exc}") from exc
 
     await log_action(session, admin.id, "update_plans", target_type="settings", target_id=str(path))
-    return {"success": True, "path": str(path)}
+    plan_count = sum(len(t.get("plans", [])) for t in data.values() if isinstance(t, dict))
+    return {
+        "success": True,
+        "path": str(path),
+        "plan_count": plan_count,
+        "bot_sync": "Bot reads the same plans.json file and reloads on change.",
+    }
 
 
 @router.get("/payment")

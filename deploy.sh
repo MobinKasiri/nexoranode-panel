@@ -15,7 +15,12 @@ docker network inspect nexora_net >/dev/null 2>&1 || docker network create nexor
 echo "==> Building and starting containers"
 cd "$PANEL_DIR"
 export BOT_ROOT_HOST="$BOT_DIR"
+export PLANS_DIR_HOST="${PLANS_DIR_HOST:-$BOT_DIR/app/data}"
 docker compose --env-file .env up -d --build
+
+echo "==> NOTE: Bot must mount the same plans.json file:"
+echo "    $PLANS_DIR_HOST/plans.json -> /app/data/plans.json (rw)"
+echo "    See bot deploy/docker-compose.prod.yml volumes section."
 
 echo "==> Install nginx config"
 sudo cp nginx/manage.conf /etc/nginx/sites-available/manage.nexoranode.xyz
