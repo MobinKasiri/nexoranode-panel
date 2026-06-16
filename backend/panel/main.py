@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -8,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from panel.auth.router import limiter, router as auth_router
 from panel.config import ensure_bot_path, ensure_plans_file, get_settings
@@ -28,6 +29,31 @@ from panel.routers import (
 )
 
 logger = logging.getLogger(__name__)
+
+_db_ready = False
+
+
+async def _init_database() -> bool:
+    """Create panel tables and seed admin. Retries until postgres is reachable."""
+    global _db_ready
+    for attempt in range(1, 31):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            await seed_initial_admin()
+            _db_ready = True
+            logger.info("Database connected.")
+            return True
+        except Exception as exc:
+            _db_ready = False
+            logger.warning("Database not ready (attempt %s/30): %s", attempt, exc)
+            if attempt < 30:
+                await asyncio.sleep(2)
+    logger.error(
+        "Database unavailable after 30 attempts. "
+        "Check DATABASE_URL and DOCKER_NETWORK match bot/postgres."
+    )
+    return False
 
 
 async def seed_initial_admin() -> None:
@@ -59,9 +85,7 @@ async def lifespan(app: FastAPI):
         logger.info("Plans file ready at %s", plans_path)
     except OSError as exc:
         logger.warning("Could not initialize plans file: %s", exc)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await seed_initial_admin()
+    await _init_database()
     yield
     await engine.dispose()
 
@@ -97,7 +121,15 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok"}
+        if not _db_ready:
+            return {"status": "starting", "db": "connecting"}
+        try:
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            return {"status": "ok", "db": "ok"}
+        except Exception as exc:
+            logger.warning("Health DB check failed: %s", exc)
+            return {"status": "degraded", "db": "error"}
 
     return app
 
