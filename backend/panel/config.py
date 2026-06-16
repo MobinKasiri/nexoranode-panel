@@ -36,7 +36,8 @@ class Settings(BaseSettings):
     BOT_API_URL: str = "https://api.telegram.org/bot"
 
     FRONTEND_URL: str = "https://manage.nexoranode.xyz"
-    PLANS_FILE: str = "/bot/app/data/plans.json"
+    # Writable path inside the panel container (mount host plans.json here in docker-compose)
+    PLANS_FILE: str = "/data/plans.json"
     BOT_ROOT: str = "/bot"
 
     REFERRAL_BONUS_TOMAN: int = 8000
@@ -55,16 +56,59 @@ def get_settings() -> Settings:
     return Settings()
 
 
-def load_plans(settings: Settings | None = None) -> dict:
+def _plans_bot_candidates(settings: Settings) -> list[Path]:
+    root = Path(settings.BOT_ROOT)
+    return [
+        root / "app" / "data" / "plans.json",
+        root / "plans.json",
+    ]
+
+
+def resolve_plans_read_path(settings: Settings | None = None) -> Path | None:
+    """Return the best existing plans.json path for reading."""
+    settings = settings or get_settings()
+    write_path = Path(settings.PLANS_FILE)
+    if write_path.exists():
+        return write_path
+    for candidate in _plans_bot_candidates(settings):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def ensure_plans_file(settings: Settings | None = None) -> Path:
+    """Ensure writable plans.json exists; seed from bot read-only copy if needed."""
     settings = settings or get_settings()
     path = Path(settings.PLANS_FILE)
-    if not path.exists():
-        alt = Path(settings.BOT_ROOT) / "app" / "data" / "plans.json"
-        path = alt if alt.exists() else path
-    if not path.exists():
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        return path
+    for src in _plans_bot_candidates(settings):
+        if src.exists():
+            path.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+            return path
+    path.write_text("{}", encoding="utf-8")
+    return path
+
+
+def load_plans(settings: Settings | None = None) -> dict:
+    settings = settings or get_settings()
+    path = resolve_plans_read_path(settings)
+    if not path:
         return {}
     with path.open(encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def save_plans(data: dict, settings: Settings | None = None) -> Path:
+    settings = settings or get_settings()
+    path = ensure_plans_file(settings)
+    tmp = Path(f"{path}.tmp")
+    with tmp.open("w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=3)
+        fh.write("\n")
+    tmp.replace(path)
+    return path
 
 
 def get_plan(plan_id: str, settings: Settings | None = None) -> dict | None:

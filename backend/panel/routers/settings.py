@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -10,10 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from panel.auth.dependencies import get_current_admin
 from panel.auth.security import hash_password
-from panel.config import get_settings, load_plans
+from panel.config import get_settings, load_plans, save_plans
 from panel.db.models import AdminUser
 from panel.db.session import get_db
 from panel.services.audit import log_action
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -33,15 +34,34 @@ async def get_plans(_admin: AdminUser = Depends(get_current_admin)):
 async def update_plans(
     data: dict,
     admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
 ):
-    settings = get_settings()
-    path = Path(settings.PLANS_FILE)
-    if not path.parent.exists():
-        path = Path(settings.BOT_ROOT) / "app" / "data" / "plans.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=3)
-    return {"success": True}
+    if not isinstance(data, dict) or not data:
+        raise HTTPException(400, "ساختار قیمت‌ها نامعتبر است")
+    for tier_id, tier in data.items():
+        if not isinstance(tier, dict):
+            raise HTTPException(400, f"دسته «{tier_id}» نامعتبر است")
+        plans = tier.get("plans")
+        if not isinstance(plans, list):
+            raise HTTPException(400, f"پلن‌های دسته «{tier_id}» نامعتبر است")
+        for plan in plans:
+            if not isinstance(plan, dict) or not plan.get("id"):
+                raise HTTPException(400, "هر پلن باید شناسه (id) داشته باشد")
+
+    try:
+        path = save_plans(data)
+    except PermissionError as exc:
+        logger.error("Cannot write plans file (read-only?): %s", exc)
+        raise HTTPException(
+            503,
+            "فایل قیمت‌ها قابل نوشتن نیست. مسیر PLANS_FILE را در docker-compose به‌صورت read-write mount کنید.",
+        ) from exc
+    except OSError as exc:
+        logger.exception("Failed to save plans.json")
+        raise HTTPException(500, f"خطا در ذخیره قیمت‌ها: {exc}") from exc
+
+    await log_action(session, admin.id, "update_plans", target_type="settings", target_id=str(path))
+    return {"success": True, "path": str(path)}
 
 
 @router.get("/payment")
