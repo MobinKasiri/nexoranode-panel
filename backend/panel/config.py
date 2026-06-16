@@ -56,6 +56,22 @@ def get_settings() -> Settings:
     return Settings()
 
 
+DEFAULT_WRITABLE_PLANS_FILE = Path("/data/plans.json")
+
+
+def resolve_plans_write_path(settings: Settings | None = None) -> Path:
+    """Always return a writable path; never write under the read-only /bot mount."""
+    settings = settings or get_settings()
+    configured = Path(settings.PLANS_FILE)
+    bot_root = str(Path(settings.BOT_ROOT).resolve())
+
+    configured_str = str(configured)
+    if configured_str.startswith("/bot") or configured_str.startswith(bot_root):
+        return DEFAULT_WRITABLE_PLANS_FILE
+
+    return configured
+
+
 def _plans_bot_candidates(settings: Settings) -> list[Path]:
     root = Path(settings.BOT_ROOT)
     return [
@@ -67,7 +83,7 @@ def _plans_bot_candidates(settings: Settings) -> list[Path]:
 def resolve_plans_read_path(settings: Settings | None = None) -> Path | None:
     """Return the best existing plans.json path for reading."""
     settings = settings or get_settings()
-    write_path = Path(settings.PLANS_FILE)
+    write_path = resolve_plans_write_path(settings)
     if write_path.exists():
         return write_path
     for candidate in _plans_bot_candidates(settings):
@@ -79,7 +95,7 @@ def resolve_plans_read_path(settings: Settings | None = None) -> Path | None:
 def ensure_plans_file(settings: Settings | None = None) -> Path:
     """Ensure writable plans.json exists; seed from bot read-only copy if needed."""
     settings = settings or get_settings()
-    path = Path(settings.PLANS_FILE)
+    path = resolve_plans_write_path(settings)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         return path
@@ -103,7 +119,7 @@ def load_plans(settings: Settings | None = None) -> dict:
 def save_plans(data: dict, settings: Settings | None = None) -> Path:
     settings = settings or get_settings()
     path = ensure_plans_file(settings)
-    tmp = Path(f"{path}.tmp")
+    tmp = path.parent / f"{path.name}.tmp"
     with tmp.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=3)
         fh.write("\n")

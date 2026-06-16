@@ -1,39 +1,39 @@
 services:
-   backend:
-      build: ./backend
-      container_name: nexoranode-panel-api
-      ports:
-         - "127.0.0.1:8000:8000"
-      env_file: .env
-      volumes:
-         - /opt/nexoranode-bot/app/data/plans.json:/app/data/plans.json:rw
-         - ${BOT_ROOT_HOST:-/opt/nexoranode-bot}:/bot:ro
-         # Writable mount for plans.json (must point to the same host file the bot uses)
-         - ${PLANS_FILE_HOST:-${BOT_ROOT_HOST:-/opt/nexoranode-bot}/app/data/plans.json}:/data/plans.json:rw
-      restart: unless-stopped
-      networks:
-         - nexora_net
-      command: >
-         sh -c "uvicorn panel.main:app --host 0.0.0.0 --port 8000"
+  backend:
+    build: ./backend
+    container_name: nexoranode-panel-api
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file: .env
+    environment:
+      # Override legacy .env value — never write under read-only /bot
+      PLANS_FILE: /data/plans.json
+    volumes:
+      - ${BOT_ROOT_HOST:-/opt/nexoranode-bot}:/bot:ro
+      - ${PLANS_FILE_HOST:-${BOT_ROOT_HOST:-/opt/nexoranode-bot}/app/data/plans.json}:/data/plans.json:rw
+    restart: unless-stopped
+    networks:
+      - nexora_net
+    command: >
+      sh -c "uvicorn panel.main:app --host 0.0.0.0 --port 8000"
 
-   frontend:
-      build:
-         context: ./frontend
-         args:
-            NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-            NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Nexoranode Admin}
-      container_name: nexoranode-panel-web
-      ports:
-         - "127.0.0.1:3000:3000"
-      env_file: .env
-      restart: unless-stopped
-      depends_on:
-         - backend
-      networks:
-         - nexora_net
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Nexoranode Admin}
+    container_name: nexoranode-panel-web
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - nexora_net
 
 networks:
-   nexora_net:
-      external: true
-      # Bot compose from deploy/ creates "deploy_nexora_net" unless bot uses name: nexora_net
-      name: ${NEXORA_DOCKER_NETWORK:-deploy_nexora_net}
+  nexora_net:
+    external: true
+    name: ${NEXORA_DOCKER_NETWORK:-deploy_nexora_net}
