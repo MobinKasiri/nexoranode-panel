@@ -3,9 +3,11 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-ARG NEXT_PUBLIC_API_URL=https://manage.nexoranode.xyz/api
+ARG NEXT_PUBLIC_API_URL=https://manage.nexoranode.xyz:2053/api
+ARG BACKEND_URL=http://127.0.0.1:8000
 ARG NEXT_PUBLIC_APP_NAME=Nexoranode Admin
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV BACKEND_URL=$BACKEND_URL
 ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
 RUN npm run build
 

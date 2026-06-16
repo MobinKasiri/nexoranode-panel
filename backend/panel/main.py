@@ -74,7 +74,11 @@ def create_app() -> FastAPI:
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[cfg.FRONTEND_URL, "http://localhost:3000"],
+        allow_origins=[
+            cfg.FRONTEND_URL,
+            "http://localhost:3000",
+            "https://manage.nexoranode.xyz:2053",
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

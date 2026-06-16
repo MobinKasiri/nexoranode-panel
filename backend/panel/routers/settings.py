@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from panel.auth.dependencies import get_current_admin
 from panel.auth.security import hash_password
-from panel.config import get_settings, load_plans, plans_diagnostics, save_plans
+from panel.config import get_settings, load_payment_info, load_plans, plans_diagnostics, save_plans
 from panel.db.models import AdminUser
 from panel.db.session import get_db
 from panel.services.audit import log_action
@@ -28,7 +28,15 @@ class CreateAdminBody(BaseModel):
 @router.get("/plans")
 async def get_plans(_admin: AdminUser = Depends(get_current_admin)):
     try:
-        return load_plans()
+        data = load_plans()
+        if not data:
+            raise HTTPException(
+                503,
+                "فایل قیمت‌ها یافت نشد. مسیر PLANS_DIR_HOST را در docker-compose بررسی کنید.",
+            )
+        return data
+    except HTTPException:
+        raise
     except OSError as exc:
         logger.exception("Failed to load plans")
         raise HTTPException(500, f"خطا در بارگذاری قیمت‌ها: {exc}") from exc
@@ -82,13 +90,14 @@ async def update_plans(
 
 @router.get("/payment")
 async def get_payment(_admin: AdminUser = Depends(get_current_admin)):
-    s = get_settings()
-    return {
-        "card_number": s.CARD_NUMBER,
-        "card_owner": s.CARD_OWNER,
-        "card_bank": s.CARD_BANK,
-        "note": "تغییرات پرداخت از طریق فایل .env انجام می‌شود",
-    }
+    info = load_payment_info()
+    note = "تغییرات پرداخت از طریق فایل .env انجام می‌شود"
+    if not info["card_number"]:
+        note = (
+            "شماره کارت تنظیم نشده. CARD_NUMBER را در .env پنل یا .env ربات "
+            "(/opt/nexoranode-bot/.env) قرار دهید."
+        )
+    return {**info, "note": note}
 
 
 @router.get("/system")
@@ -106,8 +115,15 @@ async def list_admins(
     session: AsyncSession = Depends(get_db),
     _admin: AdminUser = Depends(get_current_admin),
 ):
-    result = await session.execute(select(AdminUser).order_by(AdminUser.created_at))
-    admins = result.scalars().all()
+    try:
+        result = await session.execute(select(AdminUser).order_by(AdminUser.created_at))
+        admins = result.scalars().all()
+    except Exception as exc:
+        logger.exception("Failed to list admins")
+        raise HTTPException(
+            503,
+            "خطا در اتصال به پایگاه داده. DATABASE_URL و شبکه Docker را بررسی کنید.",
+        ) from exc
     return {
         "items": [
             {

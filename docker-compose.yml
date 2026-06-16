@@ -21,7 +21,8 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://manage.nexoranode.xyz:2053/api}
+        BACKEND_URL: ${BACKEND_URL:-http://127.0.0.1:8000}
         NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Nexoranode Admin}
     container_name: nexoranode-panel-web
     ports:
@@ -36,4 +37,4 @@ services:
 networks:
   nexora_net:
     external: true
-    name: ${NEXORA_DOCKER_NETWORK:-deploy_nexora_net}
+    name: ${NEXORA_DOCKER_NETWORK:-nexora_net}

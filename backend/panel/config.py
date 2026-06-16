@@ -88,11 +88,11 @@ def _plans_bot_candidates(settings: Settings) -> list[Path]:
 
 
 def _plans_read_candidates(settings: Settings) -> list[Path]:
-    """Ordered list of paths to try when loading plans."""
+    """Ordered list of paths to try when loading plans (bot copy first)."""
     seen: set[str] = set()
     paths: list[Path] = []
 
-    for path in [resolve_plans_write_path(settings), *_plans_bot_candidates(settings)]:
+    for path in [*_plans_bot_candidates(settings), resolve_plans_write_path(settings)]:
         key = str(path)
         if key not in seen:
             seen.add(key)
@@ -101,13 +101,47 @@ def _plans_read_candidates(settings: Settings) -> list[Path]:
     return paths
 
 
+def _parse_env_file(path: Path) -> dict[str, str]:
+    if not path.is_file():
+        return {}
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, raw = line.partition("=")
+        val = raw.strip().strip('"').strip("'")
+        values[key.strip()] = val
+    return values
+
+
+def load_payment_info(settings: Settings | None = None) -> dict[str, str]:
+    """Payment card info — panel .env first, then bot .env on the shared /bot mount."""
+    settings = settings or get_settings()
+    card = settings.CARD_NUMBER
+    owner = settings.CARD_OWNER
+    bank = settings.CARD_BANK
+
+    if not (card and owner):
+        bot_env = _parse_env_file(Path(settings.BOT_ROOT) / ".env")
+        card = card or bot_env.get("CARD_NUMBER", "")
+        owner = owner or bot_env.get("CARD_OWNER", "")
+        bank = bank or bot_env.get("CARD_BANK", "")
+
+    return {
+        "card_number": card,
+        "card_owner": owner,
+        "card_bank": bank,
+    }
+
+
 def _read_plans_file(path: Path) -> dict | None:
     if not path.is_file():
         return None
     try:
         with path.open(encoding="utf-8") as fh:
             data = json.load(fh)
-        if isinstance(data, dict):
+        if isinstance(data, dict) and data:
             return data
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Could not read plans from %s: %s", path, exc)
@@ -154,6 +188,16 @@ def ensure_plans_file(settings: Settings | None = None) -> Path:
             json.dump(src_data, fh, ensure_ascii=False, indent=3)
             fh.write("\n")
         return path
+
+    # Writable file missing/empty — copy from bot path even if it equals write path candidate
+    for src in _plans_bot_candidates(settings):
+        src_data = _read_plans_file(src)
+        if src_data:
+            logger.info("Seeding plans from bot path %s -> %s", src, path)
+            with path.open("w", encoding="utf-8") as fh:
+                json.dump(src_data, fh, ensure_ascii=False, indent=3)
+                fh.write("\n")
+            return path
 
     if not path.exists():
         path.write_text("{}\n", encoding="utf-8")

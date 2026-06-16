@@ -22,9 +22,15 @@ export default function SettingsPage() {
   const [creatingAdmin, setCreatingAdmin] = useState(false);
 
   useEffect(() => {
-    api.get<PlansData>("/settings/plans").then(setPlansData).catch(() => toast.error("خطا در بارگذاری قیمت‌ها"));
-    api.get<Record<string, string>>("/settings/payment").then(setPayment);
-    api.get<{ items: typeof admins }>("/settings/admins").then((a) => setAdmins(a.items));
+    api.get<PlansData>("/settings/plans").then(setPlansData).catch((err) => {
+      toast.error(err instanceof Error ? err.message : "خطا در بارگذاری قیمت‌ها");
+    });
+    api.get<Record<string, string>>("/settings/payment").then(setPayment).catch((err) => {
+      toast.error(err instanceof Error ? err.message : "خطا در بارگذاری اطلاعات پرداخت");
+    });
+    api.get<{ items: typeof admins }>("/settings/admins").then((a) => setAdmins(a.items)).catch((err) => {
+      toast.error(err instanceof Error ? err.message : "خطا در بارگذاری ادمین‌ها");
+    });
   }, []);
 
   const savePlans = async () => {
