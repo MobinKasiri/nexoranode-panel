@@ -1,73 +1,87 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from panel.config import ensure_bot_path, get_settings
 
 logger = logging.getLogger(__name__)
 
 _xui_service = None
+_inbound_ids: list[int] | None = None
 _vpn_service = None
-_ws_id: int | None = None
-_reality_id: int | None = None
 
 
-async def get_xui_service():
-    global _xui_service, _ws_id, _reality_id
+def _parse_inbound_filter() -> tuple[str, ...]:
+    raw = os.environ.get("XUI_INBOUND_FILTER", "").strip()
+    if not raw:
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
+def _xui_config():
     ensure_bot_path()
-    from app.bot.services.xui_api import XUIApiService
     from app.config import XUIConfig
 
-    if _xui_service is not None:
-        return _xui_service
-
     settings = get_settings()
-    config = XUIConfig(
+    return XUIConfig(
         HOST=settings.XUI_HOST,
         PATH=settings.XUI_PATH,
         USERNAME=settings.XUI_USERNAME,
         PASSWORD=settings.XUI_PASSWORD,
         TOKEN=settings.XUI_TOKEN,
         SUB_BASE_URL=settings.XUI_SUB_BASE_URL,
-        WS_INBOUND_NAME=settings.XUI_WS_INBOUND_NAME,
-        REALITY_INBOUND_NAME=settings.XUI_REALITY_INBOUND_NAME,
+        INBOUND_FILTER=_parse_inbound_filter(),
         START_AFTER_FIRST_USE=settings.XUI_START_AFTER_FIRST_USE,
         DEFAULT_DURATION_DAYS=settings.XUI_DEFAULT_DURATION_DAYS,
     )
+
+
+async def _refresh_inbound_ids() -> list[int]:
+    global _inbound_ids
+    xui = await get_xui_service()
+    _inbound_ids = await xui.enabled_inbound_ids(filter_names=_parse_inbound_filter())
+    return _inbound_ids
+
+
+async def get_xui_service():
+    global _xui_service
+    ensure_bot_path()
+    from app.bot.services.xui_api import XUIApiService
+
+    if _xui_service is not None:
+        return _xui_service
+
+    config = _xui_config()
     _xui_service = XUIApiService(config)
     if config.TOKEN:
-        pass
+        _xui_service._logged_in = True
     else:
         await _xui_service.login()
-    _ws_id, _reality_id = await _xui_service.find_inbound_ids(
-        ws_name=config.WS_INBOUND_NAME,
-        reality_name=config.REALITY_INBOUND_NAME,
-    )
     return _xui_service
 
 
 async def get_vpn_service():
-    global _vpn_service, _ws_id, _reality_id
+    global _vpn_service, _inbound_ids
     ensure_bot_path()
     from app.bot.services.vpn import VPNService
 
     if _vpn_service is not None:
         return _vpn_service
 
-    xui = await get_xui_service()
     settings = get_settings()
-    if _ws_id is None or _reality_id is None:
-        _ws_id, _reality_id = await xui.find_inbound_ids(
-            ws_name=settings.XUI_WS_INBOUND_NAME,
-            reality_name=settings.XUI_REALITY_INBOUND_NAME,
-        )
+    xui = await get_xui_service()
+    if _inbound_ids is None:
+        _inbound_ids = await xui.enabled_inbound_ids(filter_names=_parse_inbound_filter())
+        logger.info("Panel VPN bootstrap — inbound ids=%s", _inbound_ids)
+
     _vpn_service = VPNService(
         xui,
-        _ws_id,
-        _reality_id,
+        _inbound_ids,
         settings.XUI_SUB_BASE_URL,
         start_after_first_use=settings.XUI_START_AFTER_FIRST_USE,
         default_duration_days=settings.XUI_DEFAULT_DURATION_DAYS,
+        refresh_inbound_ids=_refresh_inbound_ids,
     )
     return _vpn_service
 

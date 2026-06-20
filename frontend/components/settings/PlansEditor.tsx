@@ -16,6 +16,7 @@ export interface PlanItem {
   price: number;
   per_gb: number;
   emoji: string;
+  recommended?: boolean;
 }
 
 export interface TierData {
