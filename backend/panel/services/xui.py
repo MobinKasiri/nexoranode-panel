@@ -82,6 +82,9 @@ async def get_vpn_service():
         start_after_first_use=settings.XUI_START_AFTER_FIRST_USE,
         default_duration_days=settings.XUI_DEFAULT_DURATION_DAYS,
         refresh_inbound_ids=_refresh_inbound_ids,
+        node_sync_enabled=settings.NODE_SYNC_ENABLED,
+        node_ssh_user=settings.NODE_SSH_USER,
+        node_ssh_port=settings.NODE_SSH_PORT,
     )
     return _vpn_service
 
