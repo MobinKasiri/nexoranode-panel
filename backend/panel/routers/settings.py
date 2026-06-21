@@ -67,7 +67,7 @@ async def update_plans(
                 raise HTTPException(400, "هر پلن باید شناسه (id) داشته باشد")
 
     try:
-        path = save_plans(data)
+        path, sync = save_plans(data)
     except PermissionError as exc:
         logger.error("Cannot write plans file (read-only?): %s", exc)
         raise HTTPException(
@@ -84,7 +84,7 @@ async def update_plans(
         "success": True,
         "path": str(path),
         "plan_count": plan_count,
-        "bot_sync": "Bot reads the same plans.json file and reloads on change.",
+        "bot_sync": sync,
     }
 
 

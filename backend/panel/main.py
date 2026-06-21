@@ -12,7 +12,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import select, text
 
 from panel.auth.router import limiter, router as auth_router
-from panel.config import ensure_bot_path, ensure_plans_file, get_settings
+from panel.config import ensure_bot_path, ensure_plans_file, get_settings, reconcile_plans_files
 from panel.db.models import AdminUser, Base
 from panel.db.session import async_session, engine
 from panel.auth.security import hash_password
@@ -84,7 +84,11 @@ async def lifespan(app: FastAPI):
     ensure_bot_path()
     try:
         plans_path = ensure_plans_file()
-        logger.info("Plans file ready at %s", plans_path)
+        sync = reconcile_plans_files()
+        logger.info("Plans file ready at %s (sync: %s)", plans_path, sync.get("actions"))
+        if sync.get("warnings"):
+            for w in sync["warnings"]:
+                logger.warning("Plans sync: %s", w)
     except OSError as exc:
         logger.warning("Could not initialize plans file: %s", exc)
     await _init_database()

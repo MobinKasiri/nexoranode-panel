@@ -10,7 +10,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_WRITABLE_PLANS_FILE = Path("/data/plans/plans.json")
+DEFAULT_SHARED_DATA_DIR = Path("/data/plans")
+DEFAULT_WRITABLE_PLANS_FILE = DEFAULT_SHARED_DATA_DIR / "plans.json"
 
 
 class Settings(BaseSettings):
@@ -32,8 +33,6 @@ class Settings(BaseSettings):
     XUI_PASSWORD: str = ""
     XUI_TOKEN: str | None = None
     XUI_SUB_BASE_URL: str = "https://sub.manchesterchocolates.ir/s/"
-    # Leave empty to attach new clients to ALL enabled panel inbounds (multi-location).
-    # Optional comma-separated inbound remarks, e.g. "🇩🇪 NX AC,🇵🇱 PL-N1"
     XUI_INBOUND_FILTER: str = ""
     XUI_START_AFTER_FIRST_USE: bool = True
     XUI_DEFAULT_DURATION_DAYS: int = 30
@@ -46,6 +45,8 @@ class Settings(BaseSettings):
     BOT_API_URL: str = "https://api.telegram.org/bot"
 
     FRONTEND_URL: str = "https://manage.nexoranode.xyz"
+    # Shared with bot container /app/data (host: .../app/data → /data/plans in panel)
+    BOT_DATA_DIR: str = "/data/plans"
     PLANS_FILE: str = "/data/plans/plans.json"
     BOT_ROOT: str = "/bot"
 
@@ -65,8 +66,17 @@ def get_settings() -> Settings:
     return Settings()
 
 
+def resolve_shared_data_dir(settings: Settings | None = None) -> Path:
+    """Directory shared with the bot (/app/data on host bind mount)."""
+    settings = settings or get_settings()
+    configured = Path(settings.BOT_DATA_DIR)
+    if configured.is_absolute():
+        return configured
+    return DEFAULT_SHARED_DATA_DIR
+
+
 def resolve_plans_write_path(settings: Settings | None = None) -> Path:
-    """Always return a writable path; never write under the read-only /bot mount."""
+    """Canonical writable plans.json — same file the bot reads."""
     settings = settings or get_settings()
     configured = Path(settings.PLANS_FILE)
     configured_str = str(configured)
@@ -81,7 +91,10 @@ def resolve_plans_write_path(settings: Settings | None = None) -> Path:
     except OSError:
         pass
 
-    return configured
+    if configured.is_absolute():
+        return configured
+
+    return resolve_shared_data_dir(settings) / "plans.json"
 
 
 def _plans_bot_candidates(settings: Settings) -> list[Path]:
@@ -93,11 +106,11 @@ def _plans_bot_candidates(settings: Settings) -> list[Path]:
 
 
 def _plans_read_candidates(settings: Settings) -> list[Path]:
-    """Ordered list of paths to try when loading plans (bot copy first)."""
+    """Writable shared path first — must match what the bot loads."""
     seen: set[str] = set()
     paths: list[Path] = []
 
-    for path in [*_plans_bot_candidates(settings), resolve_plans_write_path(settings)]:
+    for path in [resolve_plans_write_path(settings), *_plans_bot_candidates(settings)]:
         key = str(path)
         if key not in seen:
             seen.add(key)
@@ -121,7 +134,6 @@ def _parse_env_file(path: Path) -> dict[str, str]:
 
 
 def load_payment_info(settings: Settings | None = None) -> dict[str, str]:
-    """Payment card info — panel .env first, then bot .env on the shared /bot mount."""
     settings = settings or get_settings()
     card = settings.CARD_NUMBER
     owner = settings.CARD_OWNER
@@ -141,7 +153,6 @@ def load_payment_info(settings: Settings | None = None) -> dict[str, str]:
 
 
 def resolve_bot_token(settings: Settings | None = None) -> str:
-    """Panel BOT_TOKEN, or same token from bot .env on the shared /bot mount."""
     settings = settings or get_settings()
     token = (settings.BOT_TOKEN or "").strip()
     if token:
@@ -163,6 +174,127 @@ def _read_plans_file(path: Path) -> dict | None:
     return None
 
 
+def _same_path(a: Path, b: Path) -> bool:
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return str(a) == str(b)
+
+
+def _atomic_write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.parent / f".{path.name}.tmp"
+    with tmp.open("w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=3)
+        fh.write("\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    tmp.replace(path)
+
+
+def _mirror_plans_data(data: dict, target: Path) -> bool:
+    """Copy plans to another path when it is a separate file and writable."""
+    if not target.parent.exists() and not target.parent.parent.exists():
+        return False
+    try:
+        if target.exists() and not os.access(target, os.W_OK):
+            return False
+        if target.parent.exists() and not os.access(target.parent, os.W_OK):
+            return False
+        _atomic_write_json(target, data)
+        return True
+    except OSError as exc:
+        logger.warning("Could not mirror plans to %s: %s", target, exc)
+        return False
+
+
+def mirror_plans_to_bot(settings: Settings | None = None, data: dict | None = None) -> dict:
+    """After panel save, ensure bot-side paths have the same JSON."""
+    settings = settings or get_settings()
+    canonical = resolve_plans_write_path(settings)
+    payload = data if data is not None else (_read_plans_file(canonical) or {})
+
+    if not payload:
+        return {"mirrored": [], "skipped": [], "canonical": str(canonical)}
+
+    mirrored: list[str] = []
+    skipped: list[str] = []
+
+    for bot_p in _plans_bot_candidates(settings):
+        if _same_path(bot_p, canonical):
+            mirrored.append(str(bot_p))
+            continue
+        if _mirror_plans_data(payload, bot_p):
+            mirrored.append(str(bot_p))
+            logger.info("Mirrored plans to bot path %s", bot_p)
+        else:
+            skipped.append(str(bot_p))
+
+    return {
+        "canonical": str(canonical),
+        "mirrored": mirrored,
+        "skipped": skipped,
+        "in_sync": len(skipped) == 0 or all(_same_path(Path(p), canonical) for p in mirrored),
+    }
+
+
+def reconcile_plans_files(settings: Settings | None = None) -> dict:
+    """On startup: merge panel + bot plans files if they diverged."""
+    settings = settings or get_settings()
+    canonical = resolve_plans_write_path(settings)
+    canonical.parent.mkdir(parents=True, exist_ok=True)
+
+    canonical_data = _read_plans_file(canonical)
+    canonical_mtime = canonical.stat().st_mtime if canonical.is_file() else 0.0
+
+    actions: list[str] = []
+    warnings: list[str] = []
+
+    for bot_p in _plans_bot_candidates(settings):
+        if not bot_p.is_file():
+            continue
+        if _same_path(bot_p, canonical):
+            actions.append(f"shared:{bot_p}")
+            continue
+
+        bot_data = _read_plans_file(bot_p)
+        if not bot_data:
+            continue
+
+        bot_mtime = bot_p.stat().st_mtime
+
+        if canonical_data:
+            if bot_mtime > canonical_mtime:
+                _atomic_write_json(canonical, bot_data)
+                canonical_data = bot_data
+                actions.append(f"pulled:{bot_p}->{canonical}")
+            elif bot_mtime < canonical_mtime:
+                if _mirror_plans_data(canonical_data, bot_p):
+                    actions.append(f"pushed:{canonical}->{bot_p}")
+                else:
+                    warnings.append(
+                        f"Bot plans at {bot_p} is older than panel file but not writable. "
+                        f"Set PLANS_DIR_HOST to the bot app/data directory."
+                    )
+            else:
+                actions.append(f"unchanged:{bot_p}")
+        else:
+            _atomic_write_json(canonical, bot_data)
+            canonical_data = bot_data
+            actions.append(f"seeded:{bot_p}->{canonical}")
+
+    if not canonical_data:
+        ensure_plans_file(settings)
+
+    sync = mirror_plans_to_bot(settings, canonical_data or {})
+    return {
+        "canonical": str(canonical),
+        "actions": actions,
+        "warnings": warnings,
+        **sync,
+    }
+
+
 def resolve_plans_read_path(settings: Settings | None = None) -> Path | None:
     settings = settings or get_settings()
     for path in _plans_read_candidates(settings):
@@ -180,7 +312,6 @@ def _first_readable_plans(settings: Settings) -> tuple[Path | None, dict]:
 
 
 def ensure_plans_file(settings: Settings | None = None) -> Path:
-    """Ensure writable plans.json exists; seed from bot read-only copy if needed."""
     settings = settings or get_settings()
     path = resolve_plans_write_path(settings)
 
@@ -196,22 +327,13 @@ def ensure_plans_file(settings: Settings | None = None) -> Path:
 
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    src_path, src_data = _first_readable_plans(settings)
-    if src_path and src_path != path and src_data:
-        logger.info("Seeding plans from %s -> %s", src_path, path)
-        with path.open("w", encoding="utf-8") as fh:
-            json.dump(src_data, fh, ensure_ascii=False, indent=3)
-            fh.write("\n")
-        return path
-
-    # Writable file missing/empty — copy from bot path even if it equals write path candidate
-    for src in _plans_bot_candidates(settings):
+    for src in _plans_read_candidates(settings):
+        if _same_path(src, path):
+            continue
         src_data = _read_plans_file(src)
         if src_data:
-            logger.info("Seeding plans from bot path %s -> %s", src, path)
-            with path.open("w", encoding="utf-8") as fh:
-                json.dump(src_data, fh, ensure_ascii=False, indent=3)
-                fh.write("\n")
+            logger.info("Seeding plans from %s -> %s", src, path)
+            _atomic_write_json(path, src_data)
             return path
 
     if not path.exists():
@@ -225,19 +347,16 @@ def load_plans(settings: Settings | None = None) -> dict:
     return data
 
 
-def save_plans(data: dict, settings: Settings | None = None) -> Path:
+def save_plans(data: dict, settings: Settings | None = None) -> tuple[Path, dict]:
     settings = settings or get_settings()
     path = ensure_plans_file(settings)
 
     if path.is_dir():
         raise OSError(f"{path} is a directory — fix PLANS_DIR_HOST mount in docker-compose")
 
-    tmp = path.parent / f".{path.name}.tmp"
-    with tmp.open("w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=3)
-        fh.write("\n")
-    tmp.replace(path)
-    return path
+    _atomic_write_json(path, data)
+    sync = mirror_plans_to_bot(settings, data)
+    return path, sync
 
 
 def get_plan(plan_id: str, settings: Settings | None = None) -> dict | None:
@@ -257,25 +376,38 @@ def ensure_bot_path() -> None:
 
 
 def plans_diagnostics(settings: Settings | None = None) -> dict:
-    """Debug info for troubleshooting mount/path issues."""
     settings = settings or get_settings()
     write_path = resolve_plans_write_path(settings)
     read_path = resolve_plans_read_path(settings)
+    bot_paths = _plans_bot_candidates(settings)
+
+    def _path_info(p: Path) -> dict:
+        info = {
+            "path": str(p),
+            "exists": p.exists(),
+            "is_file": p.is_file(),
+            "readable": _read_plans_file(p) is not None,
+            "same_as_canonical": _same_path(p, write_path) if p.exists() or write_path.exists() else False,
+        }
+        if p.is_file():
+            info["mtime"] = p.stat().st_mtime
+        try:
+            info["resolved"] = str(p.resolve())
+        except OSError:
+            info["resolved"] = str(p)
+        return info
+
     return {
+        "shared_data_dir": str(resolve_shared_data_dir(settings)),
         "plans_file_env": settings.PLANS_FILE,
+        "bot_data_dir_env": settings.BOT_DATA_DIR,
         "write_path": str(write_path),
-        "write_exists": write_path.exists(),
-        "write_is_file": write_path.is_file(),
-        "write_is_dir": write_path.is_dir(),
         "read_path": str(read_path) if read_path else None,
-        "candidates": [
-            {
-                "path": str(p),
-                "exists": p.exists(),
-                "is_file": p.is_file(),
-                "is_dir": p.is_dir(),
-                "readable": _read_plans_file(p) is not None,
-            }
-            for p in _plans_read_candidates(settings)
-        ],
+        "read_matches_write": _same_path(read_path, write_path) if read_path else False,
+        "bot_plans_path": str(bot_paths[0]),
+        "paths_in_sync": all(
+            _same_path(write_path, p) or not p.is_file() or _same_path(write_path, p)
+            for p in bot_paths
+        ),
+        "candidates": [_path_info(p) for p in _plans_read_candidates(settings)],
     }

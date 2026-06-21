@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from panel.config import get_settings, resolve_plans_write_path
+from panel.config import get_settings, resolve_shared_data_dir
 from panel.services.datetime_utils import parse_optional_datetime
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ MAINTENANCE_PRESETS: dict[str, str] = {
 
 
 def maintenance_file_path() -> Path:
-    return resolve_plans_write_path(get_settings()).parent / MAINTENANCE_FILENAME
+    return resolve_shared_data_dir(get_settings()) / MAINTENANCE_FILENAME
 
 
 def _default_state() -> dict[str, Any]:

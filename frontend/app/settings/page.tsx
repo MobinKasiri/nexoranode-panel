@@ -46,8 +46,18 @@ export default function SettingsPage() {
     if (!plansData) return;
     setSavingPlans(true);
     try {
-      await api.put("/settings/plans", plansData);
+      const res = await api.put<{ bot_sync?: { skipped?: string[]; warnings?: string[] } }>(
+        "/settings/plans",
+        plansData
+      );
       toast.success("پلن‌ها ذخیره شد — ربات خودکار به‌روز می‌شود");
+      const skipped = res.bot_sync?.skipped;
+      if (skipped?.length) {
+        toast.error(
+          "فایل ربات جداگانه است — PLANS_DIR_HOST را روی app/data ربات تنظیم کنید",
+          { duration: 6000 }
+        );
+      }
     } catch {
       toast.error("خطا در ذخیره پلن‌ها");
     } finally {
