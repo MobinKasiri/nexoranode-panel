@@ -41,6 +41,11 @@ class TelegramService:
                 ) as resp:
                     data = await resp.json()
                 if not data.get("ok"):
+                    logger.warning(
+                        "Telegram getFile failed for %s: %s",
+                        file_id[:24],
+                        data.get("description", data),
+                    )
                     return None
                 file_path = data["result"]["file_path"]
                 async with session.get(
@@ -59,17 +64,6 @@ class TelegramService:
         except Exception:
             logger.exception("Failed to download Telegram file %s", file_id)
             return None
-
-
-def _media_type_for_path(file_path: str) -> str:
-    lower = file_path.lower()
-    if lower.endswith(".png"):
-        return "image/png"
-    if lower.endswith(".webp"):
-        return "image/webp"
-    if lower.endswith(".gif"):
-        return "image/gif"
-    return "image/jpeg"
 
     async def send_purchase_success(
         self, user_id: int, results: list, plan: dict
@@ -107,3 +101,14 @@ def _media_type_for_path(file_path: str) -> str:
         reason_text = reason or "رسید پرداخت تایید نشد."
         text = f"❌ <b>پرداخت شما رد شد.</b>\n\nدلیل: {reason_text}"
         await self.send_message(user_id, text)
+
+
+def _media_type_for_path(file_path: str) -> str:
+    lower = file_path.lower()
+    if lower.endswith(".png"):
+        return "image/png"
+    if lower.endswith(".webp"):
+        return "image/webp"
+    if lower.endswith(".gif"):
+        return "image/gif"
+    return "image/jpeg"

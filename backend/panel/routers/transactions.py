@@ -14,6 +14,7 @@ from panel.config import ensure_bot_path, get_plan
 from panel.db.models import AdminUser
 from panel.db.session import get_db
 from panel.services.approval import ApprovalError, approve_transaction, reject_transaction
+from panel.services.receipt_files import find_local_receipt
 from panel.services.telegram import TelegramService
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -222,15 +223,26 @@ async def get_receipt(
 ):
     Transaction, _, _ = _ensure_bot()
     tx = await Transaction.get(session, tx_id)
-    if not tx or not tx.payment_receipt:
-        raise HTTPException(404, "رسید یافت نشد")
+    if not tx:
+        raise HTTPException(404, "تراکنش یافت نشد")
+
+    local = find_local_receipt(tx_id)
+    if local:
+        path, media = local
+        return Response(content=path.read_bytes(), media_type=media)
+
+    if not tx.payment_receipt or tx.payment_receipt.startswith("local:"):
+        raise HTTPException(404, "فایل رسید یافت نشد")
 
     tg = TelegramService()
     if not tg.token:
         raise HTTPException(503, "BOT_TOKEN تنظیم نشده — رسید قابل دریافت نیست")
     result = await tg.get_file_bytes(tx.payment_receipt)
     if not result:
-        raise HTTPException(404, "دانلود رسید از تلگرام ناموفق")
+        raise HTTPException(
+            404,
+            "رسید در سرور ذخیره نشده و دانلود از تلگرام ناموفق — کاربر باید رسید را دوباره ارسال کند",
+        )
     content, media = result
     return Response(content=content, media_type=media)
 
