@@ -124,7 +124,10 @@ export default function DashboardPage() {
       </div>
 
       <Card>
-        <CardTitle className="mb-4">فعالیت اخیر</CardTitle>
+        <div className="flex items-center justify-between mb-4">
+          <CardTitle>فعالیت اخیر</CardTitle>
+          <Link href="/activity" className="text-sm text-primary hover:underline">مشاهده همه</Link>
+        </div>
         {activity.length === 0 ? (
           <p className="text-text-muted text-sm">فعالیتی ثبت نشده</p>
         ) : (

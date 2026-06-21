@@ -24,6 +24,7 @@ from panel.routers import (
     reports,
     search,
     server,
+    maintenance,
     settings as settings_router,
     transactions,
     users,
@@ -118,6 +119,7 @@ def create_app() -> FastAPI:
     app.include_router(broadcast.router)
     app.include_router(reports.router)
     app.include_router(search.router)
+    app.include_router(maintenance.router)
     app.include_router(server.router)
     app.include_router(settings_router.router)
 

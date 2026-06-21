@@ -61,9 +61,14 @@ export function Sidebar() {
 
   useEffect(() => {
     api.me().then(setMe).catch(() => setMe(null));
-    api.get<{ items: { created_at: string }[] }>("/dashboard/activity?limit=20").then((d) => {
+    api.get<{ items: { at?: string; created_at?: string }[] }>("/dashboard/activity?limit=20").then((d) => {
       const dayAgo = Date.now() - 86400000;
-      setActivityCount(d.items.filter((i) => new Date(i.created_at).getTime() > dayAgo).length);
+      setActivityCount(
+        d.items.filter((i) => {
+          const ts = i.at || i.created_at;
+          return ts && new Date(ts).getTime() > dayAgo;
+        }).length
+      );
     }).catch(() => setActivityCount(0));
   }, [pathname]);
 
@@ -132,8 +137,13 @@ export function Sidebar() {
 
       <div className="shrink-0 p-3 border-t border-border space-y-2">
         <Link
-          href="/dashboard"
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary hover:bg-surface-hover"
+          href="/activity"
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+            pathname.startsWith("/activity")
+              ? "bg-primary/15 text-primary font-medium"
+              : "text-text-secondary hover:bg-surface-hover"
+          )}
         >
           <Bell size={18} />
           فعالیت‌ها

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -113,6 +113,7 @@ async def revenue_chart(
 
 @router.get("/activity")
 async def recent_activity(
+    limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
     _admin: AdminUser = Depends(get_current_admin),
 ):
@@ -122,7 +123,7 @@ async def recent_activity(
     tx_result = await session.execute(
         select(Transaction)
         .order_by(Transaction.created_at.desc())
-        .limit(10)
+        .limit(limit)
     )
     txs = tx_result.scalars().all()
 
@@ -135,29 +136,43 @@ async def recent_activity(
                 "type": "approved",
                 "text": f"پرداخت تایید شد — {uname} — {tx.payment_amount:,} تومان",
                 "at": tx.confirmed_at.isoformat() if tx.confirmed_at else tx.created_at.isoformat(),
+                "created_at": tx.confirmed_at.isoformat() if tx.confirmed_at else tx.created_at.isoformat(),
             })
         elif tx.status == "rejected":
             events.append({
                 "type": "rejected",
                 "text": f"پرداخت رد شد — {uname}",
                 "at": tx.created_at.isoformat(),
+                "created_at": tx.created_at.isoformat(),
             })
         elif tx.status == "pending":
             events.append({
                 "type": "pending",
                 "text": f"پرداخت جدید — {uname} — {tx.payment_amount:,} تومان",
                 "at": tx.created_at.isoformat(),
+                "created_at": tx.created_at.isoformat(),
             })
 
     audit_result = await session.execute(
-        select(AuditLog).order_by(AuditLog.created_at.desc()).limit(5)
+        select(AuditLog).order_by(AuditLog.created_at.desc()).limit(min(limit, 20))
     )
+    action_labels = {
+        "create_discount": "ایجاد کد تخفیف",
+        "delete_discount": "غیرفعال‌سازی تخفیف",
+        "maintenance_on": "فعال‌سازی حالت تعمیر",
+        "maintenance_off": "غیرفعال‌سازی حالت تعمیر",
+        "update_plans": "بروزرسانی پلن‌ها",
+        "create_admin": "ایجاد مدیر",
+        "remove_admin": "حذف مدیر",
+    }
     for log in audit_result.scalars().all():
+        label = action_labels.get(log.action, log.action)
         events.append({
             "type": "audit",
-            "text": f"{log.action} — {log.target_id or ''}",
+            "text": f"{label} — {log.target_id or ''}",
             "at": log.created_at.isoformat(),
+            "created_at": log.created_at.isoformat(),
         })
 
     events.sort(key=lambda x: x["at"], reverse=True)
-    return {"items": events[:10]}
+    return {"items": events[:limit]}

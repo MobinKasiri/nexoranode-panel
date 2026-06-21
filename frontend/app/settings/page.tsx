@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { CreditCard, Shield, Tag } from "lucide-react";
+import { CreditCard, Shield, Tag, Wrench } from "lucide-react";
 import { AppShell } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { MaintenancePanel } from "@/components/settings/MaintenancePanel";
 import { PlansEditor, type PlansData } from "@/components/settings/PlansEditor";
 import { api } from "@/lib/api";
 import { cn, adminRoleLabel } from "@/lib/utils";
@@ -89,6 +90,7 @@ export default function SettingsPage() {
 
   const tabs = [
     { key: "plans", label: "پلن‌ها", icon: Tag },
+    { key: "maintenance", label: "تعمیر ربات", icon: Wrench },
     { key: "payment", label: "پرداخت", icon: CreditCard },
     { key: "admins", label: "مدیران", icon: Shield },
   ];
@@ -123,6 +125,8 @@ export default function SettingsPage() {
           <Card className="p-8 text-center text-text-muted">در حال بارگذاری پلن‌ها…</Card>
         )
       )}
+
+      {tab === "maintenance" && <MaintenancePanel />}
 
       {tab === "payment" && (
         <Card className="max-w-lg">
