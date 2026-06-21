@@ -10,7 +10,7 @@ services:
       BOT_DATA_DIR: /data/plans
     volumes:
       - ${BOT_ROOT_HOST:-/opt/nexoranode-bot}:/bot:ro
-      - ${PLANS_DIR_HOST:-${BOT_ROOT_HOST:-/opt/nexoranode-bot}/app/data}:/data/plans:rw
+      - ${PLANS_DIR_HOST:-/opt/nexoranode-data}:/data/plans:rw
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3); exit(0 if r.status==200 else 1)"]
