@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, CreditCard, Users, Shield, Tag, BarChart3, Radio, Settings, LogOut, Menu, X,
-  ChevronDown, Bell,
+  ChevronDown, Bell, type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { SearchCommand } from "@/components/layout/SearchCommand";
 
-type NavItem = { href: string; label: string; icon: React.ComponentType<{ size?: number }> };
+type NavItem = { href: string; label: string; icon: LucideIcon };
 
 type NavGroup = { id: string; label: string; items: NavItem[] };
 

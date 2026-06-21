@@ -41,7 +41,16 @@ export default function UsersPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [debouncedSearch, filter]);
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (filter) params.set("filter", filter);
+    api
+      .get<{ items: UserItem[] }>(`/users?${params}`)
+      .then((d) => setItems(d.items))
+      .finally(() => setLoading(false));
+  }, [debouncedSearch, filter]);
 
   return (
     <AppShell>

@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { cn, formatDate, formatToman } from "@/lib/utils";
-import type { UserItem } from "@/types";
 
 type UserDetail = {
   tg_id: number;
