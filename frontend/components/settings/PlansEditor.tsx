@@ -19,9 +19,17 @@ export interface PlanItem {
   recommended?: boolean;
 }
 
+export interface LocationItem {
+  flag: string;
+  name: string;
+}
+
 export interface TierData {
   name: string;
   emoji: string;
+  shop_subtitle?: string;
+  shop_footer?: string;
+  locations?: LocationItem[];
   plans: PlanItem[];
 }
 
@@ -51,6 +59,19 @@ function uniquePlanId(tierId: string, gb: number, days: number, existingIds: Set
     id = `${tierId}_plan_${Date.now()}`;
   }
   return { id, gb: candidateGb };
+}
+
+function formatLocationsPreview(locations: LocationItem[] | undefined) {
+  if (!locations?.length) return "—";
+  return locations.map((l) => `${l.flag} ${l.name}`.trim()).join(" · ");
+}
+
+function buildShopPreview(tier: TierData) {
+  const title = `${tier.emoji || "🌍"} ${tier.name || ""}`.trim();
+  const subtitle = tier.shop_subtitle || "یک اشتراک — همه سرورها فعال می‌شوند:";
+  const locs = formatLocationsPreview(tier.locations);
+  const footer = tier.shop_footer || "👇 پلن مورد نظر را انتخاب کنید:";
+  return { title, subtitle, locs, footer };
 }
 
 export function PlansEditor({ data, onChange, onSave, saving }: PlansEditorProps) {
@@ -105,9 +126,32 @@ export function PlansEditor({ data, onChange, onSave, saving }: PlansEditorProps
     toast.success("پلن حذف شد");
   };
 
+  const updateLocation = (tierId: string, index: number, patch: Partial<LocationItem>) => {
+    const tier = data[tierId];
+    const locations = [...(tier.locations || [])];
+    locations[index] = { ...locations[index], ...patch };
+    updateTier(tierId, { locations });
+  };
+
+  const addLocation = (tierId: string) => {
+    const tier = data[tierId];
+    updateTier(tierId, {
+      locations: [...(tier.locations || []), { flag: "🏳️", name: "کشور جدید" }],
+    });
+  };
+
+  const removeLocation = (tierId: string, index: number) => {
+    const tier = data[tierId];
+    updateTier(tierId, {
+      locations: (tier.locations || []).filter((_, i) => i !== index),
+    });
+  };
+
   return (
     <div className="space-y-6">
-      {tiers.map(([tierId, tier]) => (
+      {tiers.map(([tierId, tier]) => {
+        const preview = buildShopPreview(tier);
+        return (
         <Card key={tierId}>
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6 pb-4 border-b border-border">
             <div className="flex items-center gap-3 flex-1">
@@ -118,7 +162,7 @@ export function PlansEditor({ data, onChange, onSave, saving }: PlansEditorProps
                 placeholder="🔥"
               />
               <div className="flex-1">
-                <label className="text-xs text-text-muted block mb-1">نام دسته</label>
+                <label className="text-xs text-text-muted block mb-1">نام دسته (عنوان در ربات)</label>
                 <Input value={tier.name} onChange={(e) => updateTier(tierId, { name: e.target.value })} />
               </div>
             </div>
@@ -128,6 +172,73 @@ export function PlansEditor({ data, onChange, onSave, saving }: PlansEditorProps
                 <Plus size={16} className="ml-1.5" />
                 افزودن پلن
               </Button>
+            </div>
+          </div>
+
+          <div className="mb-6 p-4 rounded-xl border border-border/60 bg-background/40 space-y-4">
+            <p className="text-sm font-medium">متن صفحه خرید در ربات</p>
+            <div>
+              <label className="text-xs text-text-muted block mb-1">زیرعنوان</label>
+              <Input
+                value={tier.shop_subtitle || ""}
+                onChange={(e) => updateTier(tierId, { shop_subtitle: e.target.value })}
+                placeholder="یک اشتراک — همه سرورها فعال می‌شوند:"
+              />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-text-muted">لوکیشن‌ها</label>
+                <Button type="button" size="sm" variant="outline" onClick={() => addLocation(tierId)}>
+                  <Plus size={14} className="ml-1" />
+                  افزودن لوکیشن
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {(tier.locations || []).length === 0 ? (
+                  <p className="text-xs text-text-muted py-2">لوکیشنی تعریف نشده — دکمه بالا را بزنید</p>
+                ) : (
+                  (tier.locations || []).map((loc, locIdx) => (
+                    <div key={locIdx} className="flex gap-2 items-center">
+                      <Input
+                        className="w-16 text-center"
+                        value={loc.flag}
+                        onChange={(e) => updateLocation(tierId, locIdx, { flag: e.target.value })}
+                        placeholder="🇩🇪"
+                      />
+                      <Input
+                        className="flex-1"
+                        value={loc.name}
+                        onChange={(e) => updateLocation(tierId, locIdx, { name: e.target.value })}
+                        placeholder="آلمان"
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="text-danger shrink-0"
+                        onClick={() => removeLocation(tierId, locIdx)}
+                        aria-label="حذف لوکیشن"
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-text-muted block mb-1">متن پایین صفحه</label>
+              <Input
+                value={tier.shop_footer || ""}
+                onChange={(e) => updateTier(tierId, { shop_footer: e.target.value })}
+                placeholder="👇 پلن مورد نظر را انتخاب کنید:"
+              />
+            </div>
+            <div className="rounded-lg border border-dashed border-border p-3 text-sm text-text-secondary leading-relaxed">
+              <p className="font-medium text-text-primary">{preview.title}</p>
+              <p className="mt-2">{preview.subtitle}</p>
+              <p className="mt-1">{preview.locs}</p>
+              <p className="mt-3 text-text-muted">{preview.footer}</p>
             </div>
           </div>
 
@@ -207,7 +318,8 @@ export function PlansEditor({ data, onChange, onSave, saving }: PlansEditorProps
             )}
           </div>
         </Card>
-      ))}
+        );
+      })}
 
       <div className="flex justify-end sticky bottom-4 z-10">
         <Button onClick={onSave} disabled={saving} className="shadow-lg shadow-primary/20">
