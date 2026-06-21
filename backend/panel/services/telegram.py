@@ -4,7 +4,7 @@ import logging
 
 import aiohttp
 
-from panel.config import get_settings
+from panel.config import get_settings, resolve_bot_token
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class TelegramService:
     def __init__(self) -> None:
         settings = get_settings()
-        self.token = settings.BOT_TOKEN
+        self.token = resolve_bot_token(settings)
         self.base = f"{settings.BOT_API_URL.rstrip('/')}{self.token}"
 
     async def send_message(
@@ -46,14 +46,30 @@ class TelegramService:
                 async with session.get(
                     f"https://api.telegram.org/file/bot{self.token}/{file_path}"
                 ) as photo_resp:
+                    if photo_resp.status != 200:
+                        logger.warning(
+                            "Telegram file download HTTP %s for %s",
+                            photo_resp.status,
+                            file_id[:20],
+                        )
+                        return None
                     content = await photo_resp.read()
-                    media = "image/jpeg"
-                    if file_path.lower().endswith(".png"):
-                        media = "image/png"
+                    media = _media_type_for_path(file_path)
                     return content, media
         except Exception:
             logger.exception("Failed to download Telegram file %s", file_id)
             return None
+
+
+def _media_type_for_path(file_path: str) -> str:
+    lower = file_path.lower()
+    if lower.endswith(".png"):
+        return "image/png"
+    if lower.endswith(".webp"):
+        return "image/webp"
+    if lower.endswith(".gif"):
+        return "image/gif"
+    return "image/jpeg"
 
     async def send_purchase_success(
         self, user_id: int, results: list, plan: dict

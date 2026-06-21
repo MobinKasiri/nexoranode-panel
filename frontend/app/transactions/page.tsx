@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChips } from "@/components/ui/filter-chips";
 import { useDebounce } from "@/hooks/use-debounce";
 import { api } from "@/lib/api";
+import { ReceiptImage } from "@/components/transactions/ReceiptImage";
 import { formatDate, formatToman, toPersianDigits } from "@/lib/utils";
 import type { Transaction } from "@/types";
 
@@ -281,10 +282,8 @@ function TransactionsContent() {
                   </Section>
                   {detail.has_receipt && (
                     <Section title="تصویر رسید">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`/api/transactions/${detail.id}/receipt`}
-                        alt="رسید"
+                      <ReceiptImage
+                        txId={detail.id}
                         className="w-full rounded-lg cursor-zoom-in border border-border hover:border-primary/50 transition-colors"
                         onClick={() => setLightbox(true)}
                       />
@@ -311,10 +310,8 @@ function TransactionsContent() {
           role="dialog"
           aria-label="نمایش رسید"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`/api/transactions/${selected.id}/receipt`}
-            alt="رسید"
+          <ReceiptImage
+            txId={selected.id}
             className="max-w-full max-h-full object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}
           />

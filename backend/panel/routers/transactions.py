@@ -226,9 +226,11 @@ async def get_receipt(
         raise HTTPException(404, "رسید یافت نشد")
 
     tg = TelegramService()
+    if not tg.token:
+        raise HTTPException(503, "BOT_TOKEN تنظیم نشده — رسید قابل دریافت نیست")
     result = await tg.get_file_bytes(tx.payment_receipt)
     if not result:
-        raise HTTPException(404, "دانلود رسید ناموفق")
+        raise HTTPException(404, "دانلود رسید از تلگرام ناموفق")
     content, media = result
     return Response(content=content, media_type=media)
 

@@ -140,6 +140,16 @@ def load_payment_info(settings: Settings | None = None) -> dict[str, str]:
     }
 
 
+def resolve_bot_token(settings: Settings | None = None) -> str:
+    """Panel BOT_TOKEN, or same token from bot .env on the shared /bot mount."""
+    settings = settings or get_settings()
+    token = (settings.BOT_TOKEN or "").strip()
+    if token:
+        return token
+    bot_env = _parse_env_file(Path(settings.BOT_ROOT) / ".env")
+    return (bot_env.get("BOT_TOKEN") or "").strip()
+
+
 def _read_plans_file(path: Path) -> dict | None:
     if not path.is_file():
         return None

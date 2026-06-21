@@ -49,5 +49,15 @@ export const api = {
     window.open(`${API_BASE}/transactions/export${q}`, "_blank");
   },
 
+  /** Authenticated binary fetch (receipt images — img src cannot send cookies reliably). */
+  fetchBlob: async (path: string): Promise<Blob> => {
+    const res = await fetch(`${API_BASE}${path}`, { credentials: "include" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || "Request failed");
+    }
+    return res.blob();
+  },
+
   receiptUrl: (id: number) => `${API_BASE}/transactions/${id}/receipt`,
 };
