@@ -336,6 +336,17 @@ def ensure_plans_file(settings: Settings | None = None) -> Path:
             _atomic_write_json(path, src_data)
             return path
 
+    for example in (
+        path.parent / "plans.example.json",
+        Path(settings.BOT_ROOT) / "app" / "data" / "plans.example.json",
+    ):
+        if example.is_file():
+            ex_data = _read_plans_file(example)
+            if ex_data:
+                logger.info("Seeding plans from example %s -> %s", example, path)
+                _atomic_write_json(path, ex_data)
+                return path
+
     if not path.exists():
         path.write_text("{}\n", encoding="utf-8")
     return path
