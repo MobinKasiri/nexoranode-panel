@@ -13,13 +13,13 @@ import { FilterChips } from "@/components/ui/filter-chips";
 import { UserDrawer } from "@/components/users/UserDrawer";
 import { useDebounce } from "@/hooks/use-debounce";
 import { api } from "@/lib/api";
-import { formatToman } from "@/lib/utils";
+import { formatToman, toPersianDigits } from "@/lib/utils";
 import type { UserItem } from "@/types";
 
 const USER_FILTERS = [
-  { key: "", label: "All" },
-  { key: "active", label: "Active" },
-  { key: "banned", label: "Banned" },
+  { key: "", label: "همه" },
+  { key: "active", label: "فعال" },
+  { key: "banned", label: "مسدود" },
 ];
 
 export default function UsersPage() {
@@ -54,17 +54,16 @@ export default function UsersPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Users" description="Manage bot users and wallets" />
+      <PageHeader title="کاربران" description="مدیریت کاربران و کیف پول" />
 
       <div className="space-y-4 mb-6">
         <FilterChips options={USER_FILTERS} value={filter} onChange={setFilter} />
         <div className="search-input-wrap max-w-md">
           <Search size={16} />
           <Input
-            placeholder="Search name, username, or Telegram ID…"
+            placeholder="جستجو: نام، یوزرنیم یا آیدی تلگرام…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="font-latin"
           />
         </div>
       </div>
@@ -73,17 +72,17 @@ export default function UsersPage() {
         {loading ? (
           <div className="p-4 space-y-3">{[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-12" />)}</div>
         ) : items.length === 0 ? (
-          <EmptyState icon={Users} title="No users found" description="Try a different search or filter" />
+          <EmptyState icon={Users} title="کاربری یافت نشد" description="فیلتر یا جستجو را تغییر دهید" />
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Balance</th>
-                <th>Services</th>
-                <th>Purchases</th>
-                <th>Status</th>
+                <th>آیدی</th>
+                <th>نام</th>
+                <th>موجودی</th>
+                <th>سرویس‌ها</th>
+                <th>خریدها</th>
+                <th>وضعیت</th>
               </tr>
             </thead>
             <tbody>
@@ -93,17 +92,17 @@ export default function UsersPage() {
                   className="cursor-pointer hover:bg-surface-hover"
                   onClick={() => setSelectedId(u.tg_id)}
                 >
-                  <td className="font-latin">{u.tg_id}</td>
+                  <td className="font-latin">{toPersianDigits(u.tg_id)}</td>
                   <td>
                     <div className="font-medium">{u.full_name || "—"}</div>
                     <div className="text-xs text-text-muted font-latin">@{u.username || "—"}</div>
                   </td>
                   <td>{formatToman(u.balance)}</td>
-                  <td>{u.active_configs}</td>
-                  <td>{u.purchases}</td>
+                  <td>{toPersianDigits(u.active_configs)}</td>
+                  <td>{toPersianDigits(u.purchases)}</td>
                   <td>
                     <Badge status={u.is_banned ? "rejected" : "confirmed"}>
-                      {u.is_banned ? "Banned" : "Active"}
+                      {u.is_banned ? "مسدود" : "فعال"}
                     </Badge>
                   </td>
                 </tr>

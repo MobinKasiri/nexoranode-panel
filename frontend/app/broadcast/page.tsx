@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { api } from "@/lib/api";
+import { toPersianDigits } from "@/lib/utils";
 
 export default function BroadcastPage() {
   const [message, setMessage] = useState("");
@@ -32,33 +33,33 @@ export default function BroadcastPage() {
     try {
       const r = await api.post<{ sent: number; failed: number }>("/broadcast/send", { message, target });
       setResult(r);
-      toast.success(`${r.sent} message(s) sent`);
+      toast.success(`${toPersianDigits(r.sent)} پیام ارسال شد`);
       setConfirmOpen(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error");
+      toast.error(e instanceof Error ? e.message : "خطا");
     } finally {
       setSending(false);
     }
   };
 
   const targets = [
-    { key: "all", label: "All users" },
-    { key: "active", label: "Users with active service" },
-    { key: "inactive", label: "Users without service" },
+    { key: "all", label: "همه کاربران" },
+    { key: "active", label: "کاربران با سرویس فعال" },
+    { key: "inactive", label: "کاربران بدون سرویس" },
   ];
 
   return (
     <AppShell>
       <div className="sticky top-0 z-10 -mx-4 lg:-mx-8 px-4 lg:px-8 py-3 mb-6 bg-background/95 backdrop-blur border-b border-border">
-        <p className="text-sm text-text-muted">Recipients selected</p>
+        <p className="text-sm text-text-muted">گیرندگان انتخاب‌شده</p>
         <p className="text-3xl font-bold text-primary tabular-nums">
-          {countLoading ? "…" : count.toLocaleString("en-US")}
+          {countLoading ? "…" : toPersianDigits(count.toLocaleString("fa-IR"))}
         </p>
       </div>
 
-      <h1 className="text-2xl font-bold mb-6">Broadcast message</h1>
+      <h1 className="text-2xl font-bold mb-6">پیام همگانی</h1>
       <Card className="max-w-2xl">
-        <CardTitle className="mb-4">Audience</CardTitle>
+        <CardTitle className="mb-4">مخاطبان</CardTitle>
         <div className="space-y-2 mb-6 text-sm">
           {targets.map((o) => (
             <label key={o.key} className="flex items-center gap-3 cursor-pointer py-1">
@@ -70,23 +71,23 @@ export default function BroadcastPage() {
             </label>
           ))}
         </div>
-        <label className="text-sm text-text-secondary block mb-2">Message (HTML)</label>
+        <label className="text-sm text-text-secondary block mb-2">متن پیام (HTML)</label>
         <textarea
           className="w-full rounded-lg border border-border bg-background p-3 text-sm min-h-[160px] mb-4 font-latin"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="<b>Announcement</b>"
+          placeholder="<b>اعلان</b>"
         />
         <div
           className="rounded-lg border border-border bg-background p-3 mb-4 text-sm min-h-[60px]"
-          dangerouslySetInnerHTML={{ __html: message || "<span class='text-text-muted'>Preview…</span>" }}
+          dangerouslySetInnerHTML={{ __html: message || "<span class='text-text-muted'>پیش‌نمایش…</span>" }}
         />
         <Button onClick={() => setConfirmOpen(true)} disabled={sending || !message.trim()}>
-          {sending ? "Sending…" : "Send now"}
+          {sending ? "در حال ارسال…" : "ارسال"}
         </Button>
         {result && (
           <p className="text-sm text-text-secondary mt-4 tabular-nums">
-            Sent: {result.sent} | Failed: {result.failed}
+            ارسال موفق: {toPersianDigits(result.sent)} | ناموفق: {toPersianDigits(result.failed)}
           </p>
         )}
       </Card>
@@ -94,13 +95,13 @@ export default function BroadcastPage() {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Confirm broadcast"
-        confirmLabel="Send"
+        title="تایید ارسال پیام"
+        confirmLabel="ارسال"
         loading={sending}
         onConfirm={send}
         description={
           <p>
-            Send this message to <strong>{count.toLocaleString("en-US")}</strong> users?
+            این پیام برای <strong>{toPersianDigits(count.toLocaleString("fa-IR"))}</strong> کاربر ارسال شود؟
           </p>
         }
       />

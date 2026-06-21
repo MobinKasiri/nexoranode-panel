@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PlansEditor, type PlansData } from "@/components/settings/PlansEditor";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, adminRoleLabel } from "@/lib/utils";
 
 type AdminRow = { id: number; username: string; full_name: string; role: string };
 
@@ -35,7 +35,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     api.get<PlansData>("/settings/plans").then(setPlansData).catch((err) => {
-      toast.error(err instanceof Error ? err.message : "Failed to load plans");
+      toast.error(err instanceof Error ? err.message : "خطا در بارگذاری پلن‌ها");
     });
     api.get<Record<string, string>>("/settings/payment").then(setPayment).catch(() => {});
     loadAdmins();
@@ -46,9 +46,9 @@ export default function SettingsPage() {
     setSavingPlans(true);
     try {
       await api.put("/settings/plans", plansData);
-      toast.success("Plans saved — bot reloads automatically");
+      toast.success("پلن‌ها ذخیره شد — ربات خودکار به‌روز می‌شود");
     } catch {
-      toast.error("Failed to save plans");
+      toast.error("خطا در ذخیره پلن‌ها");
     } finally {
       setSavingPlans(false);
     }
@@ -56,17 +56,17 @@ export default function SettingsPage() {
 
   const createAdmin = async () => {
     if (!newAdmin.username || !newAdmin.password) {
-      toast.error("Username and password required");
+      toast.error("نام کاربری و رمز عبور الزامی است");
       return;
     }
     setCreatingAdmin(true);
     try {
       await api.post("/settings/admins", newAdmin);
-      toast.success("Admin created");
+      toast.success("مدیر ایجاد شد");
       setNewAdmin({ username: "", password: "", full_name: "" });
       loadAdmins();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error");
+      toast.error(err instanceof Error ? err.message : "خطا");
     } finally {
       setCreatingAdmin(false);
     }
@@ -77,27 +77,27 @@ export default function SettingsPage() {
     setRemoving(true);
     try {
       await api.delete(`/settings/admins/${removeId}`);
-      toast.success("Admin removed");
+      toast.success("مدیر حذف شد");
       setRemoveId(null);
       loadAdmins();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error");
+      toast.error(err instanceof Error ? err.message : "خطا");
     } finally {
       setRemoving(false);
     }
   };
 
   const tabs = [
-    { key: "plans", label: "Plans", icon: Tag },
-    { key: "payment", label: "Payment", icon: CreditCard },
-    { key: "admins", label: "Admins", icon: Shield },
+    { key: "plans", label: "پلن‌ها", icon: Tag },
+    { key: "payment", label: "پرداخت", icon: CreditCard },
+    { key: "admins", label: "مدیران", icon: Shield },
   ];
 
   const isSuperadmin = me?.role === "superadmin";
 
   return (
     <AppShell>
-      <PageHeader title="Settings" description="Plans, payment info, and admin access" />
+      <PageHeader title="تنظیمات" description="پلن‌ها، اطلاعات پرداخت و دسترسی مدیران" />
 
       <div className="flex flex-wrap gap-2 mb-6 p-1 rounded-xl bg-surface border border-border w-fit">
         {tabs.map((t) => (
@@ -120,17 +120,17 @@ export default function SettingsPage() {
         plansData ? (
           <PlansEditor data={plansData} onChange={setPlansData} onSave={savePlans} saving={savingPlans} />
         ) : (
-          <Card className="p-8 text-center text-text-muted">Loading plans…</Card>
+          <Card className="p-8 text-center text-text-muted">در حال بارگذاری پلن‌ها…</Card>
         )
       )}
 
       {tab === "payment" && (
         <Card className="max-w-lg">
-          <CardTitle className="mb-6">Card-to-card payment</CardTitle>
+          <CardTitle className="mb-6">پرداخت کارت به کارت</CardTitle>
           <div className="space-y-4">
-            <PaymentRow label="Card number" value={payment.card_number} mono />
-            <PaymentRow label="Owner" value={payment.card_owner} />
-            <PaymentRow label="Bank" value={payment.card_bank} />
+            <PaymentRow label="شماره کارت" value={payment.card_number} mono />
+            <PaymentRow label="صاحب کارت" value={payment.card_owner} />
+            <PaymentRow label="بانک" value={payment.card_bank} />
             {payment.note && (
               <p className="text-text-muted text-sm mt-6 p-4 rounded-lg bg-background/60 border border-border/60">{payment.note}</p>
             )}
@@ -141,9 +141,9 @@ export default function SettingsPage() {
       {tab === "admins" && (
         <div className="grid gap-6 lg:grid-cols-2 max-w-4xl">
           <Card>
-            <CardTitle className="mb-4">Active admins</CardTitle>
+            <CardTitle className="mb-4">مدیران فعال</CardTitle>
             {admins.length === 0 ? (
-              <p className="text-text-muted text-sm py-4">No admins</p>
+              <p className="text-text-muted text-sm py-4">مدیری وجود ندارد</p>
             ) : (
               <ul className="divide-y divide-border/60">
                 {admins.map((a) => (
@@ -151,13 +151,13 @@ export default function SettingsPage() {
                     <div>
                       <p className="font-medium flex items-center gap-2">
                         {a.full_name || a.username}
-                        <Badge status={a.role === "superadmin" ? "confirmed" : "pending"}>{a.role}</Badge>
+                        <Badge status={a.role === "superadmin" ? "confirmed" : "pending"}>{adminRoleLabel(a.role)}</Badge>
                       </p>
                       <p className="text-text-muted text-xs font-latin">@{a.username}</p>
                     </div>
                     {isSuperadmin && a.role !== "superadmin" && a.id !== me?.id && (
                       <Button size="sm" variant="danger" onClick={() => setRemoveId(a.id)}>
-                        Remove
+                        حذف
                       </Button>
                     )}
                   </li>
@@ -166,13 +166,13 @@ export default function SettingsPage() {
             )}
           </Card>
           <Card>
-            <CardTitle className="mb-4">Add admin</CardTitle>
+            <CardTitle className="mb-4">افزودن مدیر</CardTitle>
             <div className="space-y-3">
-              <Input placeholder="Username" value={newAdmin.username} onChange={(e) => setNewAdmin({ ...newAdmin, username: e.target.value })} className="font-latin" />
-              <Input type="password" value={newAdmin.password} onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })} />
-              <Input placeholder="Display name" value={newAdmin.full_name} onChange={(e) => setNewAdmin({ ...newAdmin, full_name: e.target.value })} />
+              <Input placeholder="نام کاربری" value={newAdmin.username} onChange={(e) => setNewAdmin({ ...newAdmin, username: e.target.value })} className="font-latin" />
+              <Input type="password" placeholder="رمز عبور" value={newAdmin.password} onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })} />
+              <Input placeholder="نام نمایشی" value={newAdmin.full_name} onChange={(e) => setNewAdmin({ ...newAdmin, full_name: e.target.value })} />
               <Button onClick={createAdmin} disabled={creatingAdmin} className="w-full sm:w-auto">
-                {creatingAdmin ? "Creating…" : "Create admin"}
+                {creatingAdmin ? "در حال ایجاد…" : "ایجاد مدیر"}
               </Button>
             </div>
           </Card>
@@ -182,12 +182,12 @@ export default function SettingsPage() {
       <ConfirmDialog
         open={removeId !== null}
         onOpenChange={(o) => !o && setRemoveId(null)}
-        title="Remove admin"
+        title="حذف مدیر"
         destructive
-        confirmLabel="Remove"
+        confirmLabel="حذف"
         loading={removing}
         onConfirm={confirmRemoveAdmin}
-        description={<p>This admin will lose access to the panel.</p>}
+        description={<p>این مدیر دیگر به پنل دسترسی نخواهد داشت.</p>}
       />
     </AppShell>
   );

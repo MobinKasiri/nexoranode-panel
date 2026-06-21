@@ -6,6 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from panel.auth.dependencies import get_current_admin
@@ -13,6 +14,7 @@ from panel.config import ensure_bot_path
 from panel.db.models import AdminUser
 from panel.db.session import get_db
 from panel.services.audit import log_action
+from panel.services.datetime_utils import parse_optional_datetime
 
 router = APIRouter(prefix="/discounts", tags=["discounts"])
 
@@ -77,16 +79,30 @@ async def create_discount(
     ensure_bot_path()
     from app.db.models import DiscountCode
 
-    expires = datetime.fromisoformat(body.expires_at) if body.expires_at else None
-    code = await DiscountCode.create(
-        session,
-        code=body.code.upper().strip(),
-        discount_percent=body.discount_percent,
-        discount_amount=body.discount_amount,
-        max_uses=body.max_uses,
-        expires_at=expires,
-        created_by=admin.id,
-    )
+    if not body.discount_percent and not body.discount_amount:
+        raise HTTPException(400, "درصد یا مبلغ تخفیف الزامی است")
+    if body.discount_percent and body.discount_amount:
+        raise HTTPException(400, "فقط یکی از درصد یا مبلغ را وارد کنید")
+
+    try:
+        expires = parse_optional_datetime(body.expires_at)
+    except ValueError:
+        raise HTTPException(400, "تاریخ انقضا نامعتبر است")
+
+    try:
+        code = await DiscountCode.create(
+            session,
+            code=body.code.upper().strip(),
+            discount_percent=body.discount_percent,
+            discount_amount=body.discount_amount,
+            max_uses=body.max_uses,
+            expires_at=expires,
+            created_by=admin.id,
+        )
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(409, "این کد تخفیف قبلاً ثبت شده است")
+
     await log_action(session, admin.id, "create_discount", target_type="discount", target_id=code.code)
     return {"success": True, "id": code.id}
 
@@ -107,7 +123,10 @@ async def patch_discount(
         raise HTTPException(404, "کد یافت نشد")
     updates = {}
     if body.expires_at is not None:
-        updates["expires_at"] = datetime.fromisoformat(body.expires_at) if body.expires_at else None
+        try:
+            updates["expires_at"] = parse_optional_datetime(body.expires_at)
+        except ValueError:
+            raise HTTPException(400, "تاریخ انقضا نامعتبر است")
     if body.max_uses is not None:
         updates["max_uses"] = body.max_uses
     if updates:

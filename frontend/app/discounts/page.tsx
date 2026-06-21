@@ -13,8 +13,9 @@ import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ExpiryDateField } from "@/components/discounts/ExpiryDateField";
 import { api } from "@/lib/api";
-import { cn, discountStatusLabel, formatDate, formatToman } from "@/lib/utils";
+import { cn, discountStatusLabel, formatDate, formatToman, toPersianDigits } from "@/lib/utils";
 
 interface DiscountItem {
   id: number;
@@ -90,22 +91,16 @@ export default function DiscountsPage() {
     setCode(r.code);
   };
 
-  const applyExpiryPreset = (days: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    setExpiresAt(d.toISOString().slice(0, 16));
-  };
-
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
     const num = parseInt(value, 10);
     if (!code.trim()) {
-      setFormError("Code is required");
+      setFormError("کد تخفیف الزامی است");
       return;
     }
     if (!num || num < 1) {
-      setFormError("Enter a valid discount value");
+      setFormError("مقدار تخفیف معتبر وارد کنید");
       return;
     }
     try {
@@ -114,16 +109,16 @@ export default function DiscountsPage() {
         discount_percent: percent ? num : null,
         discount_amount: percent ? null : num,
         max_uses: parseInt(maxUses, 10),
-        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+        expires_at: expiresAt || null,
       });
-      toast.success("Discount created");
+      toast.success("کد تخفیف ایجاد شد");
       setCode("");
       setValue("");
       setExpiresAt("");
       setShowForm(false);
       load();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Error");
+      setFormError(err instanceof Error ? err.message : "خطا");
     }
   };
 
@@ -132,11 +127,11 @@ export default function DiscountsPage() {
     setDeleting(true);
     try {
       await api.delete(`/discounts/${deleteId}`);
-      toast.success("Discount deactivated");
+      toast.success("کد تخفیف غیرفعال شد");
       setDeleteId(null);
       load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error");
+      toast.error(err instanceof Error ? err.message : "خطا");
     } finally {
       setDeleting(false);
     }
@@ -158,73 +153,68 @@ export default function DiscountsPage() {
   };
 
   const previewValue = percent
-    ? value ? `${value}% off` : "—"
+    ? value ? `${toPersianDigits(value)}٪ تخفیف` : "—"
     : value ? formatToman(parseInt(value, 10) || 0) : "—";
 
   return (
     <AppShell>
       <PageHeader
-        title="Discount codes"
-        description="Create and manage promo codes"
+        title="کدهای تخفیف"
+        description="ایجاد و مدیریت کدهای تخفیف"
         actions={
           <Button variant="outline" size="sm" onClick={() => setShowForm(!showForm)}>
             {showForm ? <ChevronUp size={16} className="ml-2" /> : <ChevronDown size={16} className="ml-2" />}
-            {showForm ? "Close form" : "New code"}
+            {showForm ? "بستن فرم" : "کد جدید"}
           </Button>
         }
       />
 
       {showForm && (
         <Card className="mb-6">
-          <CardTitle className="mb-4">Create discount</CardTitle>
+          <CardTitle className="mb-4">ایجاد کد تخفیف</CardTitle>
           <form onSubmit={create} className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-4">
               <div>
-                <label className="text-xs text-text-muted block mb-1.5">Type</label>
+                <label className="text-xs text-text-muted block mb-1.5">نوع تخفیف</label>
                 <div className="flex gap-4 text-sm">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="radio" checked={percent} onChange={() => setPercent(true)} />
-                    Percentage
+                    درصدی
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="radio" checked={!percent} onChange={() => setPercent(false)} />
-                    Fixed amount
+                    مبلغ ثابت
                   </label>
                 </div>
               </div>
               <div>
-                <label className="text-xs text-text-muted block mb-1.5">Code</label>
+                <label className="text-xs text-text-muted block mb-1.5">کد</label>
                 <div className="flex gap-2">
                   <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} required className="font-latin" />
-                  <Button type="button" variant="outline" onClick={randomCode}>Random</Button>
+                  <Button type="button" variant="outline" onClick={randomCode}>تصادفی</Button>
                 </div>
               </div>
               <div>
-                <label className="text-xs text-text-muted block mb-1.5">{percent ? "Percent" : "Amount (Toman)"}</label>
+                <label className="text-xs text-text-muted block mb-1.5">{percent ? "درصد" : "مبلغ (تومان)"}</label>
                 <Input type="number" min={1} value={value} onChange={(e) => setValue(e.target.value)} required className="font-latin" />
               </div>
               <div>
-                <label className="text-xs text-text-muted block mb-1.5">Max uses (1 per user enforced by bot)</label>
+                <label className="text-xs text-text-muted block mb-1.5">حداکثر استفاده (هر کاربر یک‌بار — توسط ربات)</label>
                 <Input type="number" min={1} value={maxUses} onChange={(e) => setMaxUses(e.target.value)} className="font-latin" />
               </div>
               <div>
-                <label className="text-xs text-text-muted block mb-1.5">Expires</label>
-                <Input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="font-latin" />
-                <div className="flex gap-2 mt-2">
-                  <Button type="button" size="sm" variant="outline" onClick={() => applyExpiryPreset(1)}>24h</Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => applyExpiryPreset(7)}>7 days</Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => applyExpiryPreset(30)}>30 days</Button>
-                </div>
+                <label className="text-xs text-text-muted block mb-1.5">تاریخ انقضا</label>
+                <ExpiryDateField value={expiresAt} onChange={setExpiresAt} />
               </div>
               {formError && <p className="text-danger text-sm">{formError}</p>}
-              <Button type="submit">Create</Button>
+              <Button type="submit">ایجاد</Button>
             </div>
             <div className="rounded-xl border border-border bg-background/60 p-4">
-              <p className="text-xs text-text-muted mb-2">Preview</p>
+              <p className="text-xs text-text-muted mb-2">پیش‌نمایش</p>
               <p className="font-latin font-bold text-lg">{code || "CODE"}</p>
               <p className="text-primary mt-1">{previewValue}</p>
-              <p className="text-text-muted text-sm mt-2">Max {maxUses || "—"} uses</p>
-              <p className="text-text-muted text-sm">{expiresAt ? `Until ${formatDate(expiresAt)}` : "No expiry"}</p>
+              <p className="text-text-muted text-sm mt-2">حداکثر {maxUses ? toPersianDigits(maxUses) : "—"} بار</p>
+              <p className="text-text-muted text-sm">{expiresAt ? `تا ${formatDate(expiresAt)}` : "بدون انقضا"}</p>
             </div>
           </form>
         </Card>
@@ -234,17 +224,17 @@ export default function DiscountsPage() {
         {loading ? (
           <div className="p-4 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12" />)}</div>
         ) : items.length === 0 ? (
-          <EmptyState icon={Tag} title="No discount codes" description="Create your first code with the button above" />
+          <EmptyState icon={Tag} title="کد تخفیفی وجود ندارد" description="با دکمه بالا اولین کد را بسازید" />
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Code</th>
-                <th>Type</th>
-                <th>Usage</th>
-                <th>Expires</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th>کد</th>
+                <th>نوع</th>
+                <th>استفاده</th>
+                <th>انقضا</th>
+                <th>وضعیت</th>
+                <th>عملیات</th>
               </tr>
             </thead>
             <tbody>
@@ -258,9 +248,9 @@ export default function DiscountsPage() {
                   >
                     <td className="font-latin font-medium">{c.code}</td>
                     <td>
-                      {c.discount_percent ? `${c.discount_percent}%` : formatToman(c.discount_amount || 0)}
+                      {c.discount_percent ? `${toPersianDigits(c.discount_percent)}٪` : formatToman(c.discount_amount || 0)}
                     </td>
-                    <td>{c.used_count} / {c.max_uses}</td>
+                    <td>{toPersianDigits(c.used_count)} / {toPersianDigits(c.max_uses)}</td>
                     <td className="text-text-secondary whitespace-nowrap">{c.expires_at ? formatDate(c.expires_at) : "—"}</td>
                     <td>
                       <Badge status={c.status === "active" ? "confirmed" : "rejected"}>
@@ -273,7 +263,7 @@ export default function DiscountsPage() {
                         variant="ghost"
                         className="text-danger hover:text-danger"
                         disabled={inactive}
-                        title={inactive ? "Expired/disabled codes cannot be deactivated again" : "Deactivate"}
+                        title={inactive ? "کدهای منقضی/غیرفعال قابل حذف مجدد نیستند" : "غیرفعال‌سازی"}
                         onClick={() => setDeleteId(c.id)}
                       >
                         <Trash2 size={16} />
@@ -290,18 +280,18 @@ export default function DiscountsPage() {
       <ConfirmDialog
         open={deleteId !== null}
         onOpenChange={(o) => !o && setDeleteId(null)}
-        title="Deactivate discount"
+        title="غیرفعال‌سازی کد تخفیف"
         destructive
-        confirmLabel="Deactivate"
+        confirmLabel="غیرفعال"
         loading={deleting}
         onConfirm={confirmDelete}
-        description={<p>This code will no longer be accepted by the bot.</p>}
+        description={<p>این کد دیگر توسط ربات پذیرفته نمی‌شود.</p>}
       />
 
       <Modal
         open={detailId !== null}
         onOpenChange={(o) => { if (!o) { setDetailId(null); setDetail(null); } }}
-        title={detail ? `Discount: ${detail.code}` : "Discount details"}
+        title={detail ? `کد: ${detail.code}` : "جزئیات کد تخفیف"}
         className="max-w-2xl"
       >
         {detailLoading || !detail ? (
@@ -309,11 +299,11 @@ export default function DiscountsPage() {
         ) : (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>Status: <Badge status={detail.status === "active" ? "confirmed" : "rejected"}>{discountStatusLabel(detail.status)}</Badge></div>
-              <div>Expires: {detail.expires_at ? formatDate(detail.expires_at) : "—"}</div>
+              <div>وضعیت: <Badge status={detail.status === "active" ? "confirmed" : "rejected"}>{discountStatusLabel(detail.status)}</Badge></div>
+              <div>انقضا: {detail.expires_at ? formatDate(detail.expires_at) : "—"}</div>
             </div>
             <div className="flex justify-between items-center">
-              <h3 className="font-medium">Redemptions ({detail.total})</h3>
+              <h3 className="font-medium">استفاده‌ها ({toPersianDigits(detail.total)})</h3>
               <Button size="sm" variant="outline" onClick={exportCsv} disabled={!detail.items.length}>
                 <Download size={14} className="ml-1" /> CSV
               </Button>
@@ -321,9 +311,9 @@ export default function DiscountsPage() {
             <table className="data-table text-sm">
               <thead>
                 <tr>
-                  <th>User</th>
-                  <th>Date</th>
-                  <th>Order</th>
+                  <th>کاربر</th>
+                  <th>تاریخ</th>
+                  <th>مبلغ سفارش</th>
                 </tr>
               </thead>
               <tbody>
@@ -338,9 +328,9 @@ export default function DiscountsPage() {
             </table>
             {detail.total > 20 && (
               <div className="flex gap-2 justify-center">
-                <Button size="sm" variant="outline" disabled={usagePage <= 1} onClick={() => setUsagePage((p) => p - 1)}>Prev</Button>
-                <span className="text-sm self-center">Page {usagePage}</span>
-                <Button size="sm" variant="outline" disabled={usagePage * 20 >= detail.total} onClick={() => setUsagePage((p) => p + 1)}>Next</Button>
+                <Button size="sm" variant="outline" disabled={usagePage <= 1} onClick={() => setUsagePage((p) => p - 1)}>قبلی</Button>
+                <span className="text-sm self-center">صفحه {toPersianDigits(usagePage)}</span>
+                <Button size="sm" variant="outline" disabled={usagePage * 20 >= detail.total} onClick={() => setUsagePage((p) => p + 1)}>بعدی</Button>
               </div>
             )}
           </div>

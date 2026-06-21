@@ -7,7 +7,7 @@ import {
   ChevronDown, Bell, type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn, adminRoleLabel, toPersianDigits } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { SearchCommand } from "@/components/layout/SearchCommand";
@@ -19,35 +19,35 @@ type NavGroup = { id: string; label: string; items: NavItem[] };
 const groups: NavGroup[] = [
   {
     id: "main",
-    label: "Dashboard",
-    items: [{ href: "/dashboard", label: "Overview", icon: LayoutDashboard }],
+    label: "داشبورد",
+    items: [{ href: "/dashboard", label: "نمای کلی", icon: LayoutDashboard }],
   },
   {
     id: "access",
-    label: "Users & Access",
+    label: "کاربران و دسترسی",
     items: [
-      { href: "/users", label: "Users", icon: Users },
-      { href: "/settings", label: "Settings", icon: Settings },
+      { href: "/users", label: "کاربران", icon: Users },
+      { href: "/settings", label: "تنظیمات", icon: Settings },
     ],
   },
   {
     id: "billing",
-    label: "Billing",
+    label: "مالی",
     items: [
-      { href: "/transactions", label: "Transactions", icon: CreditCard },
-      { href: "/reports", label: "Reports", icon: BarChart3 },
-      { href: "/discounts", label: "Discounts", icon: Tag },
+      { href: "/transactions", label: "تراکنش‌ها", icon: CreditCard },
+      { href: "/reports", label: "گزارش‌ها", icon: BarChart3 },
+      { href: "/discounts", label: "تخفیف‌ها", icon: Tag },
     ],
   },
   {
     id: "configs",
-    label: "Configs",
-    items: [{ href: "/configs", label: "VPN services", icon: Shield }],
+    label: "سرویس‌ها",
+    items: [{ href: "/configs", label: "سرویس‌های VPN", icon: Shield }],
   },
   {
     id: "comm",
-    label: "Communication",
-    items: [{ href: "/broadcast", label: "Broadcast", icon: Radio }],
+    label: "ارتباطات",
+    items: [{ href: "/broadcast", label: "پیام همگانی", icon: Radio }],
   },
 ];
 
@@ -77,16 +77,16 @@ export function Sidebar() {
   };
 
   const NavContent = () => (
-    <>
-      <div className="px-4 py-5 border-b border-border">
-        <h1 className="text-lg font-bold text-primary">NC VPN Admin</h1>
-        <p className="text-xs text-text-muted mt-0.5">Management panel</p>
+    <div className="flex flex-col h-full min-h-0">
+      <div className="shrink-0 px-4 py-5 border-b border-border">
+        <h1 className="text-lg font-bold text-primary">پنل NC VPN</h1>
+        <p className="text-xs text-text-muted mt-0.5">پنل مدیریت</p>
         <div className="mt-4">
           <SearchCommand />
         </div>
       </div>
 
-      <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
+      <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
         {groups.map((group) => {
           const isOpen = !collapsed[group.id];
           return (
@@ -130,16 +130,16 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="p-3 border-t border-border space-y-2">
+      <div className="shrink-0 p-3 border-t border-border space-y-2">
         <Link
           href="/dashboard"
           className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary hover:bg-surface-hover"
         >
           <Bell size={18} />
-          Activity
+          فعالیت‌ها
           {activityCount > 0 && (
             <span className="mr-auto rounded-full bg-primary px-2 py-0.5 text-xs text-white tabular-nums">
-              {activityCount}
+              {toPersianDigits(activityCount)}
             </span>
           )}
         </Link>
@@ -150,7 +150,7 @@ export function Sidebar() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate">{me.full_name || me.username}</p>
-              <p className="text-xs text-text-muted capitalize">{me.role}</p>
+              <p className="text-xs text-text-muted">{adminRoleLabel(me.role)}</p>
             </div>
           </div>
         )}
@@ -159,10 +159,10 @@ export function Sidebar() {
           onClick={logout}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-text-secondary hover:bg-surface-hover hover:text-danger"
         >
-          <LogOut size={18} /> Sign out
+          <LogOut size={18} /> خروج
         </button>
       </div>
-    </>
+    </div>
   );
 
   return (
@@ -175,13 +175,13 @@ export function Sidebar() {
       >
         <Menu size={20} />
       </button>
-      <aside className="hidden lg:flex w-64 flex-col border-l border-border bg-surface min-h-screen fixed right-0 top-0">
+      <aside className="hidden lg:flex w-64 flex-col border-l border-border bg-surface h-screen fixed right-0 top-0 overflow-hidden">
         <NavContent />
       </aside>
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute right-0 top-0 h-full w-72 max-w-[85vw] bg-surface flex flex-col">
+          <aside className="absolute right-0 top-0 h-full w-72 max-w-[85vw] bg-surface flex flex-col overflow-hidden">
             <button type="button" className="absolute left-4 top-4" onClick={() => setMobileOpen(false)}>
               <X size={20} />
             </button>

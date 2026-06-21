@@ -9,7 +9,7 @@ import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
-import { cn, formatDate, formatToman } from "@/lib/utils";
+import { cn, formatDate, formatToman, toPersianDigits } from "@/lib/utils";
 
 type UserDetail = {
   tg_id: number;
@@ -59,7 +59,7 @@ export function UserDrawer({ tgId, onClose, onUpdated }: Props) {
         setUser(u);
         setAudit(a.items);
       })
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Error"))
+      .catch((e) => toast.error(e instanceof Error ? e.message : "خطا"))
       .finally(() => setLoading(false));
   };
 
@@ -76,17 +76,17 @@ export function UserDrawer({ tgId, onClose, onUpdated }: Props) {
     if (!user) return;
     try {
       await api.post(`/users/${user.tg_id}/${user.is_banned ? "unban" : "ban"}`);
-      toast.success(user.is_banned ? "Unbanned" : "Banned");
+      toast.success(user.is_banned ? "رفع مسدودیت شد" : "کاربر مسدود شد");
       load();
       onUpdated?.();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error");
+      toast.error(e instanceof Error ? e.message : "خطا");
     }
   };
 
   const adjustBalance = async () => {
     if (!user || !note.trim()) {
-      toast.error("Reason is required");
+      toast.error("دلیل الزامی است");
       return;
     }
     const num = parseInt(amount, 10);
@@ -94,14 +94,14 @@ export function UserDrawer({ tgId, onClose, onUpdated }: Props) {
     setSubmitting(true);
     try {
       await api.post(`/users/${user.tg_id}/adjust-balance`, { amount: num, note: note.trim() });
-      toast.success("Balance updated");
+      toast.success("موجودی به‌روز شد");
       setBalanceOpen(false);
       setAmount("");
       setNote("");
       load();
       onUpdated?.();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error");
+      toast.error(e instanceof Error ? e.message : "خطا");
     } finally {
       setSubmitting(false);
     }
@@ -112,11 +112,11 @@ export function UserDrawer({ tgId, onClose, onUpdated }: Props) {
     setSubmitting(true);
     try {
       await api.post(`/users/${user.tg_id}/message`, { text: message.trim() });
-      toast.success("Message sent");
+      toast.success("پیام ارسال شد");
       setMessageOpen(false);
       setMessage("");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error");
+      toast.error(e instanceof Error ? e.message : "خطا");
     } finally {
       setSubmitting(false);
     }
@@ -134,8 +134,8 @@ export function UserDrawer({ tgId, onClose, onUpdated }: Props) {
         )}
       >
         <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="font-semibold">User profile</h2>
-          <button type="button" onClick={onClose} aria-label="Close">
+          <h2 className="font-semibold">پروفایل کاربر</h2>
+          <button type="button" onClick={onClose} aria-label="بستن">
             <X size={20} />
           </button>
         </div>
@@ -147,44 +147,48 @@ export function UserDrawer({ tgId, onClose, onUpdated }: Props) {
             <>
               <div>
                 <h3 className="text-lg font-bold">{user.full_name || "—"}</h3>
-                <p className="text-text-muted text-sm font-latin">@{user.username || "—"} · ID {user.tg_id}</p>
-                <p className="text-text-muted text-xs mt-1">Joined {formatDate(user.created_at)}</p>
+                <p className="text-text-muted text-sm font-latin">@{user.username || "—"} · {toPersianDigits(user.tg_id)}</p>
+                <p className="text-text-muted text-xs mt-1">عضویت {formatDate(user.created_at)}</p>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-lg border border-border p-3">
-                  <p className="text-text-muted text-xs">Balance</p>
+                  <p className="text-text-muted text-xs">موجودی</p>
                   <p className="font-semibold">{formatToman(user.balance)}</p>
                 </div>
                 <div className="rounded-lg border border-border p-3">
-                  <p className="text-text-muted text-xs">Total spend</p>
+                  <p className="text-text-muted text-xs">مجموع خرید</p>
                   <p className="font-semibold">{formatToman(user.total_spend || 0)}</p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge status={user.is_banned ? "rejected" : "confirmed"}>
-                  {user.is_banned ? "Banned" : "Active"}
+                  {user.is_banned ? "مسدود" : "فعال"}
                 </Badge>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => setBalanceOpen(true)}>Wallet</Button>
-                <Button size="sm" variant="outline" onClick={() => setMessageOpen(true)}>Send DM</Button>
+                <Button size="sm" variant="outline" onClick={() => setBalanceOpen(true)}>کیف پول</Button>
+                <Button size="sm" variant="outline" onClick={() => setMessageOpen(true)}>ارسال پیام</Button>
                 <Button size="sm" variant={user.is_banned ? "default" : "danger"} onClick={toggleBan}>
-                  {user.is_banned ? "Unban" : "Ban"}
+                  {user.is_banned ? "رفع مسدودیت" : "مسدود کردن"}
                 </Button>
               </div>
 
               <div className="flex gap-2 border-b border-border">
-                {(["configs", "transactions", "audit"] as const).map((t) => (
+                {([
+                  { key: "configs" as const, label: "سرویس‌ها" },
+                  { key: "transactions" as const, label: "تراکنش‌ها" },
+                  { key: "audit" as const, label: "سوابق" },
+                ]).map(({ key, label }) => (
                   <button
-                    key={t}
+                    key={key}
                     type="button"
-                    onClick={() => setTab(t)}
+                    onClick={() => setTab(key)}
                     className={cn(
-                      "px-3 py-2 text-sm border-b-2 -mb-px capitalize",
-                      tab === t ? "border-primary text-primary" : "border-transparent text-text-muted"
+                      "px-3 py-2 text-sm border-b-2 -mb-px",
+                      tab === key ? "border-primary text-primary" : "border-transparent text-text-muted"
                     )}
                   >
-                    {t}
+                    {label}
                   </button>
                 ))}
               </div>
@@ -192,12 +196,12 @@ export function UserDrawer({ tgId, onClose, onUpdated }: Props) {
               {tab === "configs" && (
                 <ul className="space-y-2 text-sm">
                   {user.configs.length === 0 ? (
-                    <p className="text-text-muted">No services</p>
+                    <p className="text-text-muted">سرویسی ندارد</p>
                   ) : (
                     user.configs.map((c) => (
                       <li key={c.id as number} className="rounded-lg border border-border p-3">
                         <p className="font-medium">{c.service_name as string}</p>
-                        <p className="text-text-muted text-xs">{c.plan_gb as number} GB · {c.is_active ? "Active" : "Off"}</p>
+                        <p className="text-text-muted text-xs">{toPersianDigits(c.plan_gb as number)} گیگ · {c.is_active ? "فعال" : "غیرفعال"}</p>
                       </li>
                     ))
                   )}
@@ -207,7 +211,7 @@ export function UserDrawer({ tgId, onClose, onUpdated }: Props) {
               {tab === "transactions" && (
                 <ul className="space-y-2 text-sm">
                   {user.transactions.length === 0 ? (
-                    <p className="text-text-muted">No transactions</p>
+                    <p className="text-text-muted">تراکنشی ندارد</p>
                   ) : (
                     user.transactions.map((t) => (
                       <li key={t.id as number} className="flex justify-between border-b border-border/50 py-2">
@@ -222,7 +226,7 @@ export function UserDrawer({ tgId, onClose, onUpdated }: Props) {
               {tab === "audit" && (
                 <ul className="space-y-2 text-sm">
                   {audit.length === 0 ? (
-                    <p className="text-text-muted">No admin actions yet</p>
+                    <p className="text-text-muted">هنوز اقدامی ثبت نشده</p>
                   ) : (
                     audit.map((a) => (
                       <li key={a.id} className="rounded-lg border border-border/50 p-2">
@@ -239,26 +243,26 @@ export function UserDrawer({ tgId, onClose, onUpdated }: Props) {
         </div>
       </aside>
 
-      <Modal open={balanceOpen} onOpenChange={setBalanceOpen} title="Adjust balance">
-        <p className="text-sm text-text-muted mb-3">Use negative amount to deduct. Reason is required.</p>
+      <Modal open={balanceOpen} onOpenChange={setBalanceOpen} title="تغییر موجودی">
+        <p className="text-sm text-text-muted mb-3">برای کسر موجودی، مبلغ منفی وارد کنید. دلیل الزامی است.</p>
         <div className="space-y-3">
-          <Input type="number" placeholder="Amount (+/-)" value={amount} onChange={(e) => setAmount(e.target.value)} className="font-latin" />
-          <Input placeholder="Reason" value={note} onChange={(e) => setNote(e.target.value)} />
+          <Input type="number" placeholder="مبلغ (+/-)" value={amount} onChange={(e) => setAmount(e.target.value)} className="font-latin" />
+          <Input placeholder="دلیل" value={note} onChange={(e) => setNote(e.target.value)} />
           <Button onClick={adjustBalance} disabled={submitting} className="w-full">
-            {submitting ? "Saving…" : "Apply"}
+            {submitting ? "در حال ذخیره…" : "اعمال"}
           </Button>
         </div>
       </Modal>
 
-      <Modal open={messageOpen} onOpenChange={setMessageOpen} title="Send Telegram message">
+      <Modal open={messageOpen} onOpenChange={setMessageOpen} title="ارسال پیام تلگرام">
         <textarea
           className="w-full rounded-lg border border-border bg-background p-3 text-sm min-h-[120px] mb-3"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="HTML supported"
+          placeholder="HTML پشتیبانی می‌شود"
         />
         <Button onClick={sendMessage} disabled={submitting} className="w-full">
-          {submitting ? "Sending…" : "Send"}
+          {submitting ? "در حال ارسال…" : "ارسال"}
         </Button>
       </Modal>
     </>

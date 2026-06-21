@@ -5,18 +5,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Western digits (0-9) — matches bot display. */
+const PERSIAN_DIGITS = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+
 export function toPersianDigits(value: string | number): string {
-  return String(value);
+  return String(value).replace(/\d/g, (d) => PERSIAN_DIGITS[parseInt(d, 10)]);
 }
 
 export function formatToman(amount: number): string {
-  return amount.toLocaleString("en-US") + " T";
+  return `${toPersianDigits(amount.toLocaleString("fa-IR"))} تومان`;
 }
 
 export function formatBytes(bytes: number): string {
-  const gb = bytes / (1024 ** 3);
-  return gb.toFixed(1) + " GB";
+  const gb = bytes / 1024 ** 3;
+  return `${toPersianDigits(gb.toFixed(1))} گیگ`;
 }
 
 export function trafficPercent(used: number, limit: number): number {
@@ -33,12 +34,16 @@ export function trafficBarColor(pct: number): string {
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  if (Number.isNaN(d.getTime())) return "—";
+  return toPersianDigits(
+    d.toLocaleString("fa-IR", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  );
 }
 
 export function discountStatusLabel(status: string): string {
@@ -49,4 +54,12 @@ export function discountStatusLabel(status: string): string {
     exhausted: "تمام شده",
   };
   return map[status] || status;
+}
+
+export function adminRoleLabel(role: string): string {
+  const map: Record<string, string> = {
+    superadmin: "مدیر کل",
+    admin: "مدیر",
+  };
+  return map[role] || role;
 }
