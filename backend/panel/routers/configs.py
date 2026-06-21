@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,8 +9,11 @@ from panel.auth.dependencies import get_current_admin
 from panel.config import ensure_bot_path
 from panel.db.models import AdminUser
 from panel.db.session import get_db
-from panel.services.audit import log_action
-from panel.services.xui import get_vpn_service
+from panel.services.config_ops import (
+    delete_config_background,
+    sync_all_configs,
+    toggle_config,
+)
 
 router = APIRouter(prefix="/configs", tags=["configs"])
 
@@ -53,6 +56,7 @@ async def list_configs(
             "service_name": c.service_name,
             "user_id": c.user_id,
             "username": user.username if user else None,
+            "full_name": user.full_name if user else None,
             "plan_gb": c.plan_gb,
             "plan_days": c.plan_days,
             "traffic_used_bytes": c.traffic_used_bytes,
@@ -65,8 +69,18 @@ async def list_configs(
 
 
 @router.post("/{config_id}/toggle")
-async def toggle_config(
+async def toggle_config_endpoint(
     config_id: int,
+    session: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    return await toggle_config(session, config_id, admin.id)
+
+
+@router.delete("/{config_id}", status_code=202)
+async def delete_config_endpoint(
+    config_id: int,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
@@ -75,48 +89,15 @@ async def toggle_config(
 
     config = await VPNConfig.get(session, config_id)
     if not config:
-        raise HTTPException(404)
-    vpn = await get_vpn_service()
-    await vpn.set_enabled(session, config, not config.is_active)
-    await log_action(session, admin.id, "toggle_config", target_type="config", target_id=str(config_id))
-    return {"success": True, "is_active": not config.is_active}
+        raise HTTPException(404, "سرویس یافت نشد")
 
-
-@router.delete("/{config_id}")
-async def delete_config(
-    config_id: int,
-    session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
-):
-    ensure_bot_path()
-    from app.db.models import VPNConfig
-
-    config = await VPNConfig.get(session, config_id)
-    if not config:
-        raise HTTPException(404)
-    vpn = await get_vpn_service()
-    await vpn.delete(session, config)
-    await log_action(session, admin.id, "delete_config", target_type="config", target_id=str(config_id))
-    return {"success": True}
+    background_tasks.add_task(delete_config_background, config_id, admin.id)
+    return {"success": True, "queued": True, "message": "حذف در پس‌زمینه انجام می‌شود"}
 
 
 @router.post("/sync-all")
-async def sync_all(
+async def sync_all_endpoint(
     session: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    ensure_bot_path()
-    from app.db.models import VPNConfig
-
-    vpn = await get_vpn_service()
-    result = await session.execute(select(VPNConfig).where(VPNConfig.is_active.is_(True)))
-    configs = result.scalars().all()
-    synced = 0
-    for c in configs:
-        try:
-            await vpn.refresh_traffic(session, c)
-            synced += 1
-        except Exception:
-            pass
-    await log_action(session, admin.id, "sync_configs", details=str(synced))
-    return {"success": True, "synced": synced, "total": len(configs)}
+    return await sync_all_configs(session, admin.id)

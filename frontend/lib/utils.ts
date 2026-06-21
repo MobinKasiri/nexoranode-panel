@@ -5,19 +5,18 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
-
+/** Western digits (0-9) — matches bot display. */
 export function toPersianDigits(value: string | number): string {
-  return String(value).replace(/\d/g, (d) => PERSIAN_DIGITS[parseInt(d, 10)]);
+  return String(value);
 }
 
 export function formatToman(amount: number): string {
-  return toPersianDigits(amount.toLocaleString("en-US")) + " ت";
+  return amount.toLocaleString("en-US") + " T";
 }
 
 export function formatBytes(bytes: number): string {
   const gb = bytes / (1024 ** 3);
-  return toPersianDigits(gb.toFixed(1)) + " GB";
+  return gb.toFixed(1) + " GB";
 }
 
 export function trafficPercent(used: number, limit: number): number {
@@ -34,7 +33,20 @@ export function trafficBarColor(pct: number): string {
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return toPersianDigits(
-    d.toLocaleDateString("fa-IR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-  );
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function discountStatusLabel(status: string): string {
+  const map: Record<string, string> = {
+    active: "فعال",
+    expired: "منقضی",
+    disabled: "غیرفعال",
+    exhausted: "تمام شده",
+  };
+  return map[status] || status;
 }

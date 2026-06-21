@@ -42,7 +42,7 @@ export const api = {
 
   logout: () => fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" }),
 
-  me: () => request<{ username: string; full_name: string; role: string }>("/auth/me"),
+  me: () => request<{ id: number; username: string; full_name: string; role: string }>("/auth/me"),
 
   exportTransactions: (status?: string) => {
     const q = status ? `?status=${status}` : "";

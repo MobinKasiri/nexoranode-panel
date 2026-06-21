@@ -8,29 +8,37 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PlansEditor, type PlansData } from "@/components/settings/PlansEditor";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+type AdminRow = { id: number; username: string; full_name: string; role: string };
 
 export default function SettingsPage() {
   const [tab, setTab] = useState("plans");
   const [plansData, setPlansData] = useState<PlansData | null>(null);
   const [savingPlans, setSavingPlans] = useState(false);
   const [payment, setPayment] = useState<Record<string, string>>({});
-  const [admins, setAdmins] = useState<{ id: number; username: string; full_name: string }[]>([]);
+  const [admins, setAdmins] = useState<AdminRow[]>([]);
+  const [me, setMe] = useState<AdminRow | null>(null);
   const [newAdmin, setNewAdmin] = useState({ username: "", password: "", full_name: "" });
   const [creatingAdmin, setCreatingAdmin] = useState(false);
+  const [removeId, setRemoveId] = useState<number | null>(null);
+  const [removing, setRemoving] = useState(false);
+
+  const loadAdmins = () => {
+    api.get<{ items: AdminRow[] }>("/settings/admins").then((a) => setAdmins(a.items));
+    api.me().then(setMe);
+  };
 
   useEffect(() => {
     api.get<PlansData>("/settings/plans").then(setPlansData).catch((err) => {
-      toast.error(err instanceof Error ? err.message : "خطا در بارگذاری قیمت‌ها");
+      toast.error(err instanceof Error ? err.message : "Failed to load plans");
     });
-    api.get<Record<string, string>>("/settings/payment").then(setPayment).catch((err) => {
-      toast.error(err instanceof Error ? err.message : "خطا در بارگذاری اطلاعات پرداخت");
-    });
-    api.get<{ items: typeof admins }>("/settings/admins").then((a) => setAdmins(a.items)).catch((err) => {
-      toast.error(err instanceof Error ? err.message : "خطا در بارگذاری ادمین‌ها");
-    });
+    api.get<Record<string, string>>("/settings/payment").then(setPayment).catch(() => {});
+    loadAdmins();
   }, []);
 
   const savePlans = async () => {
@@ -38,9 +46,9 @@ export default function SettingsPage() {
     setSavingPlans(true);
     try {
       await api.put("/settings/plans", plansData);
-      toast.success("قیمت‌ها ذخیره شد — ربات به‌صورت خودکار به‌روز می‌شود");
+      toast.success("Plans saved — bot reloads automatically");
     } catch {
-      toast.error("خطا در ذخیره قیمت‌ها");
+      toast.error("Failed to save plans");
     } finally {
       setSavingPlans(false);
     }
@@ -48,32 +56,48 @@ export default function SettingsPage() {
 
   const createAdmin = async () => {
     if (!newAdmin.username || !newAdmin.password) {
-      toast.error("نام کاربری و رمز عبور الزامی است");
+      toast.error("Username and password required");
       return;
     }
     setCreatingAdmin(true);
     try {
       await api.post("/settings/admins", newAdmin);
-      toast.success("ادمین ایجاد شد");
+      toast.success("Admin created");
       setNewAdmin({ username: "", password: "", full_name: "" });
-      const a = await api.get<{ items: typeof admins }>("/settings/admins");
-      setAdmins(a.items);
+      loadAdmins();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "خطا");
+      toast.error(err instanceof Error ? err.message : "Error");
     } finally {
       setCreatingAdmin(false);
     }
   };
 
+  const confirmRemoveAdmin = async () => {
+    if (!removeId) return;
+    setRemoving(true);
+    try {
+      await api.delete(`/settings/admins/${removeId}`);
+      toast.success("Admin removed");
+      setRemoveId(null);
+      loadAdmins();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    } finally {
+      setRemoving(false);
+    }
+  };
+
   const tabs = [
-    { key: "plans", label: "قیمت‌ها", icon: Tag },
-    { key: "payment", label: "پرداخت", icon: CreditCard },
-    { key: "admins", label: "ادمین‌ها", icon: Shield },
+    { key: "plans", label: "Plans", icon: Tag },
+    { key: "payment", label: "Payment", icon: CreditCard },
+    { key: "admins", label: "Admins", icon: Shield },
   ];
+
+  const isSuperadmin = me?.role === "superadmin";
 
   return (
     <AppShell>
-      <PageHeader title="تنظیمات" description="مدیریت قیمت‌ها، اطلاعات پرداخت و دسترسی ادمین‌ها" />
+      <PageHeader title="Settings" description="Plans, payment info, and admin access" />
 
       <div className="flex flex-wrap gap-2 mb-6 p-1 rounded-xl bg-surface border border-border w-fit">
         {tabs.map((t) => (
@@ -83,9 +107,7 @@ export default function SettingsPage() {
             onClick={() => setTab(t.key)}
             className={cn(
               "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm transition-colors",
-              tab === t.key
-                ? "bg-primary text-white shadow-sm"
-                : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+              tab === t.key ? "bg-primary text-white shadow-sm" : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
             )}
           >
             <t.icon size={16} />
@@ -98,21 +120,19 @@ export default function SettingsPage() {
         plansData ? (
           <PlansEditor data={plansData} onChange={setPlansData} onSave={savePlans} saving={savingPlans} />
         ) : (
-          <Card className="p-8 text-center text-text-muted">در حال بارگذاری قیمت‌ها...</Card>
+          <Card className="p-8 text-center text-text-muted">Loading plans…</Card>
         )
       )}
 
       {tab === "payment" && (
         <Card className="max-w-lg">
-          <CardTitle className="mb-6">اطلاعات پرداخت کارت به کارت</CardTitle>
+          <CardTitle className="mb-6">Card-to-card payment</CardTitle>
           <div className="space-y-4">
-            <PaymentRow label="شماره کارت" value={payment.card_number} mono />
-            <PaymentRow label="صاحب کارت" value={payment.card_owner} />
-            <PaymentRow label="بانک" value={payment.card_bank} />
+            <PaymentRow label="Card number" value={payment.card_number} mono />
+            <PaymentRow label="Owner" value={payment.card_owner} />
+            <PaymentRow label="Bank" value={payment.card_bank} />
             {payment.note && (
-              <p className="text-text-muted text-sm mt-6 p-4 rounded-lg bg-background/60 border border-border/60">
-                {payment.note}
-              </p>
+              <p className="text-text-muted text-sm mt-6 p-4 rounded-lg bg-background/60 border border-border/60">{payment.note}</p>
             )}
           </div>
         </Card>
@@ -121,57 +141,54 @@ export default function SettingsPage() {
       {tab === "admins" && (
         <div className="grid gap-6 lg:grid-cols-2 max-w-4xl">
           <Card>
-            <CardTitle className="mb-4">ادمین‌های فعال</CardTitle>
+            <CardTitle className="mb-4">Active admins</CardTitle>
             {admins.length === 0 ? (
-              <p className="text-text-muted text-sm py-4">ادمینی ثبت نشده</p>
+              <p className="text-text-muted text-sm py-4">No admins</p>
             ) : (
               <ul className="divide-y divide-border/60">
                 {admins.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                  <li key={a.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0 gap-2">
                     <div>
-                      <p className="font-medium">{a.full_name || a.username}</p>
+                      <p className="font-medium flex items-center gap-2">
+                        {a.full_name || a.username}
+                        <Badge status={a.role === "superadmin" ? "confirmed" : "pending"}>{a.role}</Badge>
+                      </p>
                       <p className="text-text-muted text-xs font-latin">@{a.username}</p>
                     </div>
+                    {isSuperadmin && a.role !== "superadmin" && a.id !== me?.id && (
+                      <Button size="sm" variant="danger" onClick={() => setRemoveId(a.id)}>
+                        Remove
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>
             )}
           </Card>
           <Card>
-            <CardTitle className="mb-4">افزودن ادمین جدید</CardTitle>
+            <CardTitle className="mb-4">Add admin</CardTitle>
             <div className="space-y-3">
-              <div>
-                <label className="text-xs text-text-muted block mb-1.5">نام کاربری</label>
-                <Input
-                  placeholder="username"
-                  value={newAdmin.username}
-                  onChange={(e) => setNewAdmin({ ...newAdmin, username: e.target.value })}
-                  className="font-latin"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-text-muted block mb-1.5">رمز عبور</label>
-                <Input
-                  type="password"
-                  value={newAdmin.password}
-                  onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-text-muted block mb-1.5">نام کامل</label>
-                <Input
-                  placeholder="نام نمایشی"
-                  value={newAdmin.full_name}
-                  onChange={(e) => setNewAdmin({ ...newAdmin, full_name: e.target.value })}
-                />
-              </div>
+              <Input placeholder="Username" value={newAdmin.username} onChange={(e) => setNewAdmin({ ...newAdmin, username: e.target.value })} className="font-latin" />
+              <Input type="password" value={newAdmin.password} onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })} />
+              <Input placeholder="Display name" value={newAdmin.full_name} onChange={(e) => setNewAdmin({ ...newAdmin, full_name: e.target.value })} />
               <Button onClick={createAdmin} disabled={creatingAdmin} className="w-full sm:w-auto">
-                {creatingAdmin ? "در حال ایجاد..." : "ایجاد ادمین"}
+                {creatingAdmin ? "Creating…" : "Create admin"}
               </Button>
             </div>
           </Card>
         </div>
       )}
+
+      <ConfirmDialog
+        open={removeId !== null}
+        onOpenChange={(o) => !o && setRemoveId(null)}
+        title="Remove admin"
+        destructive
+        confirmLabel="Remove"
+        loading={removing}
+        onConfirm={confirmRemoveAdmin}
+        description={<p>This admin will lose access to the panel.</p>}
+      />
     </AppShell>
   );
 }

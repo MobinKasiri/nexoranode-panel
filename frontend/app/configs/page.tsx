@@ -9,20 +9,24 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
-import { formatBytes, formatDate, toPersianDigits, trafficBarColor, trafficPercent } from "@/lib/utils";
+import { formatBytes, formatDate, trafficBarColor, trafficPercent } from "@/lib/utils";
 import type { VPNConfigItem } from "@/types";
 
 export default function ConfigsPage() {
   const [items, setItems] = useState<VPNConfigItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<VPNConfigItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => {
     setLoading(true);
     api
       .get<{ items: VPNConfigItem[] }>("/configs")
       .then((d) => setItems(d.items))
+      .catch((e) => toast.error(e instanceof Error ? e.message : "خطا"))
       .finally(() => setLoading(false));
   };
 
@@ -31,24 +35,41 @@ export default function ConfigsPage() {
   const syncAll = async () => {
     setSyncing(true);
     try {
-      const r = await api.post<{ synced: number; total: number }>("/configs/sync-all");
-      toast.success(`${toPersianDigits(r.synced)} از ${toPersianDigits(r.total)} همگام شد`);
+      const r = await api.post<{ synced: number; total: number; failed?: { id: number; reason: string }[] }>(
+        "/configs/sync-all"
+      );
+      const failNote = r.failed?.length ? ` (${r.failed.length} خطا)` : "";
+      toast.success(`${r.synced} از ${r.total} همگام شد${failNote}`);
       load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "خطا در همگام‌سازی");
     } finally {
       setSyncing(false);
     }
   };
 
   const toggle = async (id: number) => {
-    await api.post(`/configs/${id}/toggle`);
-    load();
+    try {
+      await api.post(`/configs/${id}/toggle`);
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "خطا");
+    }
   };
 
-  const del = async (id: number) => {
-    if (!confirm("آیا از حذف این سرویس مطمئن هستید؟")) return;
-    await api.delete(`/configs/${id}`);
-    toast.success("حذف شد");
-    load();
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/configs/${deleteTarget.id}`);
+      toast.success("حذف در صف قرار گرفت — چند ثانیه صبر کنید");
+      setDeleteTarget(null);
+      setTimeout(load, 6000);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "خطا در حذف");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -103,7 +124,7 @@ export default function ConfigsPage() {
                         <Button size="sm" variant="outline" onClick={() => toggle(c.id)}>
                           {c.is_active ? "غیرفعال" : "فعال"}
                         </Button>
-                        <Button size="sm" variant="danger" onClick={() => del(c.id)}>
+                        <Button size="sm" variant="danger" onClick={() => setDeleteTarget(c)}>
                           حذف
                         </Button>
                       </div>
@@ -115,6 +136,30 @@ export default function ConfigsPage() {
           </table>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title="حذف سرویس"
+        destructive
+        confirmLabel="حذف"
+        loading={deleting}
+        onConfirm={confirmDelete}
+        description={
+          deleteTarget ? (
+            <>
+              <p>
+                سرویس <strong>{deleteTarget.service_name}</strong> برای کاربر{" "}
+                <strong>@{deleteTarget.username || deleteTarget.user_id}</strong> حذف می‌شود.
+              </p>
+              <p className="text-text-muted text-xs mt-2">
+                پلن: {deleteTarget.plan_gb} GB · {deleteTarget.plan_days} روز · مصرف{" "}
+                {formatBytes(deleteTarget.traffic_used_bytes)}
+              </p>
+            </>
+          ) : null
+        }
+      />
     </AppShell>
   );
 }

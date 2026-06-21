@@ -33,3 +33,11 @@ async def get_current_admin(
     if not admin or not admin.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive admin")
     return admin
+
+
+async def require_superadmin(
+    admin: AdminUser = Depends(get_current_admin),
+) -> AdminUser:
+    if admin.role != "superadmin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "فقط سوپرادمین مجاز است")
+    return admin

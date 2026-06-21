@@ -22,6 +22,7 @@ from panel.routers import (
     dashboard,
     discount,
     reports,
+    search,
     server,
     settings as settings_router,
     transactions,
@@ -116,6 +117,7 @@ def create_app() -> FastAPI:
     app.include_router(discount.router)
     app.include_router(broadcast.router)
     app.include_router(reports.router)
+    app.include_router(search.router)
     app.include_router(server.router)
     app.include_router(settings_router.router)
 

@@ -29,6 +29,7 @@ class LoginRequest(BaseModel):
 
 
 class AdminOut(BaseModel):
+    id: int
     username: str
     full_name: str
     role: str
@@ -74,7 +75,12 @@ async def login(
     return TokenResponse(
         access_token=access,
         refresh_token=refresh,
-        admin=AdminOut(username=admin.username, full_name=admin.full_name, role=admin.role),
+        admin=AdminOut(
+            id=admin.id,
+            username=admin.username,
+            full_name=admin.full_name,
+            role=admin.role,
+        ),
     )
 
 
@@ -111,7 +117,12 @@ async def refresh_token(
     return TokenResponse(
         access_token=access,
         refresh_token=new_refresh,
-        admin=AdminOut(username=admin.username, full_name=admin.full_name, role=admin.role),
+        admin=AdminOut(
+            id=admin.id,
+            username=admin.username,
+            full_name=admin.full_name,
+            role=admin.role,
+        ),
     )
 
 
@@ -124,4 +135,9 @@ async def logout(response: Response) -> dict:
 
 @router.get("/me", response_model=AdminOut)
 async def me(admin: AdminUser = Depends(get_current_admin)) -> AdminOut:
-    return AdminOut(username=admin.username, full_name=admin.full_name, role=admin.role)
+    return AdminOut(
+        id=admin.id,
+        username=admin.username,
+        full_name=admin.full_name,
+        role=admin.role,
+    )

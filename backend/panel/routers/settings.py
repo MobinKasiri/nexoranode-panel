@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from panel.auth.dependencies import get_current_admin
+from panel.auth.dependencies import get_current_admin, require_superadmin
 from panel.auth.security import hash_password
 from panel.config import get_settings, load_payment_info, load_plans, plans_diagnostics, save_plans
 from panel.db.models import AdminUser
@@ -116,7 +116,9 @@ async def list_admins(
     _admin: AdminUser = Depends(get_current_admin),
 ):
     try:
-        result = await session.execute(select(AdminUser).order_by(AdminUser.created_at))
+        result = await session.execute(
+            select(AdminUser).where(AdminUser.is_active.is_(True)).order_by(AdminUser.created_at)
+        )
         admins = result.scalars().all()
     except Exception as exc:
         logger.exception("Failed to list admins")
@@ -160,3 +162,29 @@ async def create_admin(
     await session.commit()
     await log_action(session, admin.id, "create_admin", target_type="admin", target_id=body.username)
     return {"success": True, "id": new_admin.id}
+
+
+@router.delete("/admins/{admin_id}")
+async def remove_admin(
+    admin_id: int,
+    session: AsyncSession = Depends(get_db),
+    superadmin: AdminUser = Depends(require_superadmin),
+):
+    result = await session.execute(select(AdminUser).where(AdminUser.id == admin_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, "ادمین یافت نشد")
+    if target.id == superadmin.id:
+        raise HTTPException(409, "نمی‌توانید خودتان را حذف کنید")
+    if target.role == "superadmin":
+        raise HTTPException(409, "حذف سوپرادمین مجاز نیست")
+    target.is_active = False
+    await session.commit()
+    await log_action(
+        session,
+        superadmin.id,
+        "remove_admin",
+        target_type="admin",
+        target_id=target.username,
+    )
+    return {"success": True}

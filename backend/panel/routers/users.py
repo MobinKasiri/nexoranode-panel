@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from panel.auth.dependencies import get_current_admin
 from panel.config import ensure_bot_path
-from panel.db.models import AdminUser
+from panel.db.models import AdminUser, AuditLog
 from panel.db.session import get_db
 from panel.services.audit import log_action
+from panel.services.telegram import TelegramService
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -17,6 +18,15 @@ router = APIRouter(prefix="/users", tags=["users"])
 class AddBalanceBody(BaseModel):
     amount: int
     note: str | None = None
+
+
+class AdjustBalanceBody(BaseModel):
+    amount: int = Field(..., description="Positive to add, negative to subtract")
+    note: str = Field(..., min_length=2)
+
+
+class MessageBody(BaseModel):
+    text: str = Field(..., min_length=1)
 
 
 @router.get("")
@@ -91,7 +101,7 @@ async def get_user(
 ):
     ensure_bot_path()
     from app.db.models import Referral, User, VPNConfig
-    from app.db.models.transaction import Transaction
+    from app.db.models.transaction import TX_CONFIRMED, TX_PURCHASE, TX_WALLET_TOPUP, Transaction
 
     user = await User.get(session, tg_id)
     if not user:
@@ -100,6 +110,15 @@ async def get_user(
     configs = await VPNConfig.get_for_user(session, tg_id)
     txs = await Transaction.get_for_user(session, tg_id, limit=50)
     referrals = await Referral.list_for_referrer(session, tg_id)
+
+    spend_result = await session.execute(
+        select(func.coalesce(func.sum(Transaction.amount), 0))
+        .where(Transaction.user_id == tg_id)
+        .where(Transaction.status == TX_CONFIRMED)
+        .where(Transaction.type.in_([TX_PURCHASE, TX_WALLET_TOPUP]))
+        .where(Transaction.amount > 0)
+    )
+    total_spend = int(spend_result.scalar_one() or 0)
 
     return {
         "tg_id": user.tg_id,
@@ -110,6 +129,7 @@ async def get_user(
         "referral_code": user.referral_code,
         "referred_by": user.referred_by,
         "created_at": user.created_at.isoformat(),
+        "total_spend": total_spend,
         "configs": [
             {
                 "id": c.id,
@@ -146,6 +166,104 @@ async def get_user(
     }
 
 
+@router.get("/{tg_id}/audit")
+async def user_audit_log(
+    tg_id: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=50),
+    session: AsyncSession = Depends(get_db),
+    _admin: AdminUser = Depends(get_current_admin),
+):
+    tg_str = str(tg_id)
+    q = (
+        select(AuditLog)
+        .where(AuditLog.target_type == "user", AuditLog.target_id == tg_str)
+        .order_by(AuditLog.created_at.desc())
+    )
+    total = (await session.execute(select(func.count()).select_from(q.subquery()))).scalar_one()
+    result = await session.execute(q.offset((page - 1) * limit).limit(limit))
+    logs = result.scalars().all()
+    return {
+        "items": [
+            {
+                "id": log.id,
+                "action": log.action,
+                "admin_id": log.admin_id,
+                "details": log.details,
+                "created_at": log.created_at.isoformat(),
+            }
+            for log in logs
+        ],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
+
+
+@router.post("/{tg_id}/adjust-balance")
+async def adjust_balance(
+    tg_id: int,
+    body: AdjustBalanceBody,
+    session: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    ensure_bot_path()
+    from app.bot.services.wallet import credit
+    from app.db.models import User
+    from app.db.models.transaction import TX_ADMIN_CREDIT
+
+    user = await User.get(session, tg_id)
+    if not user:
+        raise HTTPException(404, "کاربر یافت نشد")
+    if body.amount == 0:
+        raise HTTPException(400, "مبلغ نمی‌تواند صفر باشد")
+    if body.amount < 0 and user.balance + body.amount < 0:
+        raise HTTPException(400, "موجودی کافی نیست")
+
+    await credit(session, tg_id, body.amount, body.note, tx_type=TX_ADMIN_CREDIT)
+    user = await User.get(session, tg_id)
+    if body.amount > 0:
+        tg = TelegramService()
+        await tg.send_wallet_charged(tg_id, user.balance if user else 0)
+    await log_action(
+        session,
+        admin.id,
+        "adjust_balance",
+        target_type="user",
+        target_id=str(tg_id),
+        details=f"{body.amount}:{body.note}",
+    )
+    return {"success": True, "balance": user.balance if user else 0}
+
+
+@router.post("/{tg_id}/message")
+async def send_user_message(
+    tg_id: int,
+    body: MessageBody,
+    session: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    ensure_bot_path()
+    from app.db.models import User
+
+    user = await User.get(session, tg_id)
+    if not user:
+        raise HTTPException(404, "کاربر یافت نشد")
+    tg = TelegramService()
+    ok = await tg.send_message(tg_id, body.text)
+    if not ok:
+        raise HTTPException(502, "ارسال پیام تلگرام ناموفق")
+    await log_action(
+        session,
+        admin.id,
+        "send_message",
+        target_type="user",
+        target_id=str(tg_id),
+        details=body.text[:200],
+    )
+    return {"success": True}
+
+
 @router.post("/{tg_id}/add-balance")
 async def add_balance(
     tg_id: int,
@@ -153,21 +271,13 @@ async def add_balance(
     session: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    ensure_bot_path()
-    from app.bot.services.wallet import credit
-    from app.db.models import User
-    from panel.services.telegram import TelegramService
-
-    user = await User.get(session, tg_id)
-    if not user:
-        raise HTTPException(404, "کاربر یافت نشد")
-    desc = body.note or "شارژ توسط ادمین"
-    await credit(session, tg_id, body.amount, desc)
-    user = await User.get(session, tg_id)
-    tg = TelegramService()
-    await tg.send_wallet_charged(tg_id, user.balance if user else 0)
-    await log_action(session, admin.id, "add_balance", target_type="user", target_id=str(tg_id), details=str(body.amount))
-    return {"success": True, "balance": user.balance if user else 0}
+    note = body.note or "شارژ توسط ادمین"
+    return await adjust_balance(
+        tg_id,
+        AdjustBalanceBody(amount=body.amount, note=note),
+        session,
+        admin,
+    )
 
 
 @router.post("/{tg_id}/ban")
