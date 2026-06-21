@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from panel.config import get_settings, resolve_plans_write_path
+from panel.services.datetime_utils import parse_optional_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,7 @@ def public_maintenance_state() -> dict[str, Any]:
     return {
         "enabled": bool(state.get("enabled")),
         "reason": state.get("reason"),
+        "custom_message": state.get("custom_message"),
         "message": build_user_message(state) if state.get("enabled") else None,
         "ends_at": state.get("ends_at"),
         "remaining": remaining,
@@ -136,18 +138,31 @@ def public_maintenance_state() -> dict[str, Any]:
 def enable_maintenance(
     *,
     reason: str,
-    duration_minutes: int,
+    duration_minutes: int | None = None,
+    ends_at: str | None = None,
     custom_message: str | None,
     admin_id: int,
 ) -> dict[str, Any]:
     if reason not in MAINTENANCE_PRESETS:
         reason = "maintenance"
-    ends = datetime.utcnow() + timedelta(minutes=max(1, duration_minutes))
+
+    end_dt: datetime | None = None
+    if ends_at:
+        end_dt = parse_optional_datetime(ends_at)
+        if end_dt is None:
+            raise ValueError("invalid ends_at")
+        if end_dt <= datetime.utcnow():
+            raise ValueError("ends_at must be in the future")
+    elif duration_minutes is not None:
+        end_dt = datetime.utcnow() + timedelta(minutes=max(1, duration_minutes))
+    else:
+        end_dt = datetime.utcnow() + timedelta(hours=1)
+
     state = {
         "enabled": True,
         "reason": reason,
         "custom_message": custom_message.strip() if custom_message else None,
-        "ends_at": ends.replace(microsecond=0).isoformat(),
+        "ends_at": end_dt.replace(microsecond=0).isoformat(),
         "updated_at": datetime.utcnow().replace(microsecond=0).isoformat(),
         "updated_by_admin_id": admin_id,
     }

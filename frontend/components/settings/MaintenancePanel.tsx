@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Wrench } from "lucide-react";
+import { Calendar, Clock, Wrench } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
-import { cn, formatDate, toPersianDigits } from "@/lib/utils";
+import { cn, formatDate, remainingPersianFromIso, toPersianDigits } from "@/lib/utils";
 
 type MaintenanceState = {
   enabled: boolean;
   reason: string;
+  custom_message?: string | null;
   message: string | null;
   ends_at: string | null;
   remaining: string | null;
@@ -33,12 +35,51 @@ const DURATIONS = [
   { minutes: 240, label: "۴ ساعت" },
 ];
 
+type TimeMode = "preset" | "minutes" | "datetime";
+
+function combineDateTime(date: string, time: string) {
+  if (!date) return "";
+  return `${date}T${time || "23:59"}`;
+}
+
+function previewRemaining(
+  timeMode: TimeMode,
+  duration: number,
+  customHours: string,
+  customMinutes: string,
+  endDateTime: string
+): string | null {
+  if (timeMode === "datetime" && endDateTime) {
+    return remainingPersianFromIso(endDateTime);
+  }
+  let total = duration;
+  if (timeMode === "minutes") {
+    const h = parseInt(customHours, 10) || 0;
+    const m = parseInt(customMinutes, 10) || 0;
+    total = h * 60 + m;
+    if (total < 1) return null;
+  }
+  if (total < 60) return `${toPersianDigits(total)} دقیقه`;
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  if (mins) return `${toPersianDigits(hours)} ساعت و ${toPersianDigits(mins)} دقیقه`;
+  return `${toPersianDigits(hours)} ساعت`;
+}
+
 export function MaintenancePanel() {
   const [state, setState] = useState<MaintenanceState | null>(null);
   const [reason, setReason] = useState("developing");
   const [duration, setDuration] = useState(60);
+  const [timeMode, setTimeMode] = useState<TimeMode>("preset");
+  const [customHours, setCustomHours] = useState("1");
+  const [customMinutes, setCustomMinutes] = useState("0");
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [customMessage, setCustomMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const endDateTime = combineDateTime(endDate, endTime);
 
   const load = () => {
     setLoading(true);
@@ -47,20 +88,58 @@ export function MaintenancePanel() {
       .then((d) => {
         setState(d);
         if (d.reason) setReason(d.reason);
+        if (d.custom_message) setCustomMessage(d.custom_message);
       })
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, []);
 
+  const presetText = state?.presets[reason] || state?.presets.maintenance || "";
+
+  const previewBase = customMessage.trim() || presetText;
+
+  const previewRemainingText = useMemo(
+    () => previewRemaining(timeMode, duration, customHours, customMinutes, endDateTime),
+    [timeMode, duration, customHours, customMinutes, endDateTime]
+  );
+
+  const buildPayload = () => {
+    const payload: {
+      enabled: boolean;
+      reason: string;
+      custom_message?: string | null;
+      duration_minutes?: number;
+      ends_at?: string;
+    } = {
+      enabled: true,
+      reason,
+      custom_message: customMessage.trim() || null,
+    };
+
+    if (timeMode === "datetime") {
+      if (!endDateTime) {
+        throw new Error("تاریخ و ساعت پایان را وارد کنید");
+      }
+      payload.ends_at = endDateTime;
+    } else if (timeMode === "minutes") {
+      const h = parseInt(customHours, 10) || 0;
+      const m = parseInt(customMinutes, 10) || 0;
+      const total = h * 60 + m;
+      if (total < 1) throw new Error("مدت زمان باید حداقل ۱ دقیقه باشد");
+      payload.duration_minutes = total;
+    } else {
+      payload.duration_minutes = duration;
+    }
+
+    return payload;
+  };
+
   const enable = async () => {
     setSaving(true);
     try {
-      const d = await api.put<MaintenanceState>("/maintenance", {
-        enabled: true,
-        reason,
-        duration_minutes: duration,
-      });
+      const payload = buildPayload();
+      const d = await api.put<MaintenanceState>("/maintenance", payload);
       setState(d);
       toast.success("حالت تعمیر فعال شد — ربات برای کاربران غیرفعال است");
     } catch (e) {
@@ -87,8 +166,6 @@ export function MaintenancePanel() {
     return <Card className="p-8 text-center text-text-muted">در حال بارگذاری…</Card>;
   }
 
-  const preview = state.presets[reason] || state.presets.maintenance;
-
   return (
     <div className="grid gap-6 lg:grid-cols-2 max-w-5xl">
       <Card>
@@ -98,8 +175,8 @@ export function MaintenancePanel() {
         </CardTitle>
 
         {state.enabled ? (
-          <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 mb-6">
-            <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 mb-6 space-y-3">
+            <div className="flex items-center justify-between gap-2">
               <span className="font-medium text-warning">ربات برای کاربران غیرفعال است</span>
               <Badge status="pending">فعال</Badge>
             </div>
@@ -107,9 +184,15 @@ export function MaintenancePanel() {
               <p className="text-sm text-text-secondary">زمان باقی‌مانده: {state.remaining}</p>
             )}
             {state.ends_at && (
-              <p className="text-xs text-text-muted mt-1">تا {formatDate(state.ends_at)}</p>
+              <p className="text-xs text-text-muted">تا {formatDate(state.ends_at)}</p>
             )}
-            <Button variant="danger" className="mt-4" onClick={disable} disabled={saving}>
+            {state.message && (
+              <div
+                className="rounded-lg border border-border/60 bg-background/60 p-3 text-sm leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: state.message.replace(/\n/g, "<br/>") }}
+              />
+            )}
+            <Button variant="danger" className="mt-2" onClick={disable} disabled={saving}>
               {saving ? "…" : "فعال‌سازی ربات"}
             </Button>
           </div>
@@ -120,7 +203,7 @@ export function MaintenancePanel() {
         {!state.enabled && (
           <div className="space-y-5">
             <div>
-              <label className="text-xs text-text-muted block mb-2">دلیل</label>
+              <label className="text-xs text-text-muted block mb-2">دلیل (متن پیش‌فرض)</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {REASONS.map((r) => (
                   <button
@@ -141,24 +224,134 @@ export function MaintenancePanel() {
             </div>
 
             <div>
+              <label className="text-xs text-text-muted block mb-1.5">پیام سفارشی (اختیاری)</label>
+              <p className="text-xs text-text-muted mb-2">
+                اگر پر شود جایگزین متن پیش‌فرض می‌شود. HTML مجاز است (&lt;b&gt;، &lt;i&gt;).
+              </p>
+              <textarea
+                className="w-full rounded-lg border border-border bg-background p-3 text-sm min-h-[120px]"
+                value={customMessage}
+                onChange={(e) => setCustomMessage(e.target.value)}
+                placeholder="مثال: 🔧 ربات تا ساعت ۱۸:۰۰ در حال بروزرسانی است. لطفاً بعداً مراجعه کنید."
+              />
+              {customMessage.trim() && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="mt-2 text-text-muted"
+                  onClick={() => setCustomMessage("")}
+                >
+                  پاک کردن پیام سفارشی
+                </Button>
+              )}
+            </div>
+
+            <div>
               <label className="text-xs text-text-muted block mb-2">مدت زمان</label>
-              <div className="flex flex-wrap gap-2">
-                {DURATIONS.map((d) => (
-                  <Button
-                    key={d.minutes}
-                    type="button"
-                    size="sm"
-                    variant={duration === d.minutes ? "default" : "outline"}
-                    onClick={() => setDuration(d.minutes)}
-                  >
-                    {d.label}
-                  </Button>
-                ))}
+              <div className="flex flex-wrap gap-2 mb-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={timeMode === "preset" ? "default" : "outline"}
+                  onClick={() => setTimeMode("preset")}
+                >
+                  گزینه‌های آماده
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={timeMode === "minutes" ? "default" : "outline"}
+                  onClick={() => setTimeMode("minutes")}
+                >
+                  مدت دلخواه
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={timeMode === "datetime" ? "default" : "outline"}
+                  onClick={() => setTimeMode("datetime")}
+                >
+                  تاریخ و ساعت دقیق
+                </Button>
               </div>
+
+              {timeMode === "preset" && (
+                <div className="flex flex-wrap gap-2">
+                  {DURATIONS.map((d) => (
+                    <Button
+                      key={d.minutes}
+                      type="button"
+                      size="sm"
+                      variant={duration === d.minutes ? "default" : "outline"}
+                      onClick={() => setDuration(d.minutes)}
+                    >
+                      {d.label}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              {timeMode === "minutes" && (
+                <div className="grid grid-cols-2 gap-3 max-w-xs">
+                  <div>
+                    <label className="text-xs text-text-muted block mb-1">ساعت</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={168}
+                      value={customHours}
+                      onChange={(e) => setCustomHours(e.target.value)}
+                      className="font-latin"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted block mb-1">دقیقه</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={59}
+                      value={customMinutes}
+                      onChange={(e) => setCustomMinutes(e.target.value)}
+                      className="font-latin"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {timeMode === "datetime" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
+                  <div>
+                    <label className="text-xs text-text-muted block mb-1">تاریخ پایان</label>
+                    <div className="relative">
+                      <Calendar size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                      <Input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="font-latin pr-10"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted block mb-1">ساعت پایان</label>
+                    <div className="relative">
+                      <Clock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                      <Input
+                        type="time"
+                        value={endTime}
+                        onChange={(e) => setEndTime(e.target.value)}
+                        disabled={!endDate}
+                        className="font-latin pr-10"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <Button onClick={enable} disabled={saving} className="w-full sm:w-auto">
-              {saving ? "در حال فعال‌سازی…" : `غیرفعال کردن ربات (${toPersianDigits(duration)} دقیقه)`}
+              {saving ? "در حال فعال‌سازی…" : "غیرفعال کردن ربات"}
             </Button>
           </div>
         )}
@@ -167,11 +360,20 @@ export function MaintenancePanel() {
       <Card>
         <CardTitle className="mb-4">پیش‌نمایش پیام کاربران</CardTitle>
         <div
-          className="rounded-xl border border-border bg-background/60 p-4 text-sm leading-relaxed whitespace-pre-line"
+          className="rounded-xl border border-border bg-background/60 p-4 text-sm leading-relaxed"
           dangerouslySetInnerHTML={{
-            __html: preview.replace(/\n/g, "<br/>") + (duration ? `<br/><br/>⏱ زمان تقریبی: <b>${DURATIONS.find((d) => d.minutes === duration)?.label || ""}</b>` : ""),
+            __html:
+              previewBase.replace(/\n/g, "<br/>") +
+              (previewRemainingText
+                ? `<br/><br/>⏱ زمان تقریبی: <b>${previewRemainingText}</b>`
+                : ""),
           }}
         />
+        {!customMessage.trim() && (
+          <p className="text-xs text-text-muted mt-3">
+            در حال نمایش متن پیش‌فرض «{REASONS.find((r) => r.key === reason)?.label}». پیام سفارشی را در کنار آن اضافه کنید.
+          </p>
+        )}
         <p className="text-xs text-text-muted mt-4">
           مدیران تلگرام (BOT_ADMINS) همچنان می‌توانند از ربات استفاده کنند.
         </p>

@@ -56,6 +56,19 @@ export function discountStatusLabel(status: string): string {
   return map[status] || status;
 }
 
+export function remainingPersianFromIso(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso.includes("T") && !iso.endsWith("Z") && !iso.includes("+") ? iso : iso);
+  const delta = d.getTime() - Date.now();
+  if (Number.isNaN(d.getTime()) || delta <= 0) return null;
+  const minutes = Math.floor(delta / 60000);
+  if (minutes < 60) return `${toPersianDigits(minutes)} دقیقه`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  if (rem) return `${toPersianDigits(hours)} ساعت و ${toPersianDigits(rem)} دقیقه`;
+  return `${toPersianDigits(hours)} ساعت`;
+}
+
 export function adminRoleLabel(role: string): string {
   const map: Record<string, string> = {
     superadmin: "مدیر کل",

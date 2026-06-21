@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +21,8 @@ router = APIRouter(prefix="/maintenance", tags=["maintenance"])
 class EnableMaintenanceBody(BaseModel):
     enabled: bool
     reason: str = "maintenance"
-    duration_minutes: int = Field(default=60, ge=1, le=24 * 7)
+    duration_minutes: int | None = Field(default=None, ge=1, le=24 * 7 * 60)
+    ends_at: str | None = None
     custom_message: str | None = None
 
 
@@ -37,19 +38,31 @@ async def update_maintenance(
     session: AsyncSession = Depends(get_db),
 ):
     if body.enabled:
-        state = enable_maintenance(
-            reason=body.reason,
-            duration_minutes=body.duration_minutes,
-            custom_message=body.custom_message,
-            admin_id=admin.id,
-        )
+        if not body.duration_minutes and not body.ends_at:
+            raise HTTPException(400, "مدت زمان یا تاریخ پایان الزامی است")
+        try:
+            state = enable_maintenance(
+                reason=body.reason,
+                duration_minutes=body.duration_minutes,
+                ends_at=body.ends_at,
+                custom_message=body.custom_message,
+                admin_id=admin.id,
+            )
+        except ValueError as exc:
+            msg = str(exc)
+            if msg == "invalid ends_at":
+                raise HTTPException(400, "تاریخ پایان نامعتبر است")
+            if msg == "ends_at must be in the future":
+                raise HTTPException(400, "تاریخ پایان باید در آینده باشد")
+            raise HTTPException(400, "تنظیمات نامعتبر است")
+        detail = body.ends_at or f"{body.duration_minutes}m"
         await log_action(
             session,
             admin.id,
             "maintenance_on",
             target_type="maintenance",
             target_id=body.reason,
-            details=f"{body.duration_minutes}m",
+            details=detail,
         )
     else:
         state = disable_maintenance(admin.id)
