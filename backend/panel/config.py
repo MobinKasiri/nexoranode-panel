@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     XUI_USERNAME: str = ""
     XUI_PASSWORD: str = ""
     XUI_TOKEN: str | None = None
-    XUI_SUB_BASE_URL: str = "https://s.nexoranode.xyz:2096/s/"
+    XUI_SUB_BASE_URL: str = "https://sub.manchesterchocolates.ir/s/"
     # Leave empty to attach new clients to ALL enabled panel inbounds (multi-location).
     # Optional comma-separated inbound remarks, e.g. "🇩🇪 NX AC,🇵🇱 PL-N1"
     XUI_INBOUND_FILTER: str = ""
