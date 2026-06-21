@@ -85,6 +85,7 @@ async def get_vpn_service():
         node_sync_enabled=settings.NODE_SYNC_ENABLED,
         node_ssh_user=settings.NODE_SSH_USER,
         node_ssh_port=settings.NODE_SSH_PORT,
+        node_ssh_identity=settings.NODE_SSH_IDENTITY,
     )
     return _vpn_service
 

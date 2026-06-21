@@ -37,9 +37,10 @@ class Settings(BaseSettings):
     XUI_INBOUND_FILTER: str = ""
     XUI_START_AFTER_FIRST_USE: bool = True
     XUI_DEFAULT_DURATION_DAYS: int = 30
-    NODE_SYNC_ENABLED: bool = True
+    NODE_SYNC_ENABLED: bool = False
     NODE_SSH_USER: str = "root"
     NODE_SSH_PORT: int = 22
+    NODE_SSH_IDENTITY: str = ""
 
     BOT_TOKEN: str = ""
     BOT_API_URL: str = "https://api.telegram.org/bot"
