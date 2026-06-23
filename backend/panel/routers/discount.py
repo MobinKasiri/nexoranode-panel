@@ -142,7 +142,7 @@ async def patch_discount(
 
 
 @router.get("/random")
-async def random_code(_admin: AdminUser = Depends(get_current_admin)):
+async def random_code(_admin: AdminUser = Depends(require_permission("discounts", "read"))):
     return {"code": secrets.token_hex(4).upper()}
 
 
