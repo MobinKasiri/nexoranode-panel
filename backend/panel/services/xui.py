@@ -22,7 +22,7 @@ def reset_xui_cache() -> None:
 
 def _xui_config():
     ensure_bot_path()
-    from app.config import XUIConfig
+    from panel.bot_bridge.xui_config import XUIConfig
 
     resolved = resolve_xui_settings()
     return XUIConfig(
@@ -89,8 +89,9 @@ async def require_xui_service():
             detail = "هیچ inbound فعالی در پنل VPN یافت نشد"
         elif "connect" in msg or "network" in msg or "ssl" in msg:
             detail = (
-                "پنل VPN از داخل Docker در دسترس نیست — "
-                "XUI_HOST را بررسی کنید (از 127.0.0.1 به host.docker.internal یا URL عمومی)"
+                "پنل 3X-UI از داخل Docker در دسترس نیست — "
+                "XUI_HOST را بررسی کنید (مثال: https://p.nexoranode.xyz:2057 یا "
+                "https://127.0.0.1:2057 روی همان سرور)"
             )
         raise HTTPException(503, detail) from exc
 

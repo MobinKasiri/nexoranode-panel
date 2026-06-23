@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     INITIAL_ADMIN_PASSWORD: str = ""
     INITIAL_ADMIN_FULLNAME: str = "مدیر"
 
-    XUI_HOST: str = "https://p.nexoranode.xyz:2087"
-    XUI_PATH: str = "/CC6AiFGmYY4ZWVRf08"
+    XUI_HOST: str = "https://p.nexoranode.xyz:2057"
+    XUI_PATH: str = "/F9Ax1FO5Oh7yWLk8Ww"
     XUI_USERNAME: str = ""
     XUI_PASSWORD: str = ""
     XUI_TOKEN: str | None = None
@@ -169,15 +169,21 @@ def _env_pick(settings: Settings, bot_env: dict[str, str], key: str, panel_val: 
 
 
 def _normalize_xui_host(host: str) -> str:
-    """Panel runs in Docker; bot .env may use 127.0.0.1 for co-located x-ui."""
+    """Panel runs in Docker; bot .env may use 127.0.0.1 for co-located 3X-UI (port 2057)."""
     from urllib.parse import urlparse, urlunparse
 
     raw = (host or "").strip()
     if not raw:
         return raw
     parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+    netloc = parsed.netloc
+    # Legacy typo in examples — 3X-UI is on 2057, not 2087
+    if parsed.port == 2087:
+        logger.warning("XUI_HOST port 2087 is wrong for this stack — using 2057 (3X-UI panel)")
+        netloc = netloc.replace(":2087", ":2057", 1)
     if parsed.hostname in ("127.0.0.1", "localhost"):
-        netloc = parsed.netloc.replace(parsed.hostname, "host.docker.internal", 1)
+        netloc = netloc.replace(parsed.hostname, "host.docker.internal", 1)
+    if netloc != parsed.netloc:
         return urlunparse(parsed._replace(netloc=netloc))
     return raw
 
@@ -474,6 +480,9 @@ def ensure_bot_path() -> None:
     bot_root = Path(settings.BOT_ROOT)
     if bot_root.exists() and str(bot_root) not in os.sys.path:
         os.sys.path.insert(0, str(bot_root))
+    from panel.bot_bridge.bootstrap import bootstrap_bot_xui_imports
+
+    bootstrap_bot_xui_imports()
 
 
 def plans_diagnostics(settings: Settings | None = None) -> dict:
