@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from panel.config import ensure_bot_path
 from panel.db.session import async_session
 from panel.services.audit import log_action
+from panel.services.telegram import TelegramService
 from panel.services.xui import get_vpn_service, get_xui_service, require_xui_service
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,8 @@ class CreateConfigBody(BaseModel):
     uuid: str | None = None
     sub_id: str | None = None
     plan_id: str = "panel_manual"
+    notify_user: bool = True
+    user_message: str | None = Field(None, max_length=1000)
 
 
 class UpdateConfigBody(BaseModel):
@@ -206,6 +209,43 @@ async def enrich_config(session: AsyncSession, config) -> dict[str, Any]:
     return item
 
 
+def _config_expiry_text(expiry_dt, plan_days: int, start_after_first_use: bool) -> str:
+    ensure_bot_path()
+    from app.bot.utils.jalali import to_jalali
+
+    if start_after_first_use or expiry_dt is None:
+        return f"شروع {plan_days} روز پس از اولین اتصال"
+    return to_jalali(expiry_dt)
+
+
+async def _notify_config_created(
+    body: CreateConfigBody,
+    user_tg_id: int,
+    item: dict[str, Any],
+    expiry_dt,
+    *,
+    start_after_first_use: bool,
+) -> bool:
+    if not body.notify_user:
+        return False
+    sub_url = item.get("subscription_url")
+    if not sub_url:
+        return False
+    expiry_text = _config_expiry_text(expiry_dt, body.plan_days, start_after_first_use)
+    tg = TelegramService()
+    return await tg.send_config_granted(
+        chat_id=user_tg_id,
+        service_name=item.get("service_name") or body.service_name,
+        plan_gb=body.plan_gb,
+        plan_days=body.plan_days,
+        subscription_url=sub_url,
+        expiry_text=expiry_text,
+        inbound_remarks=item.get("inbound_remarks"),
+        admin_note=body.user_message,
+        is_active=bool(item.get("is_active", body.enable)),
+    )
+
+
 async def create_config_admin(
     session: AsyncSession, admin_id: int, body: CreateConfigBody
 ) -> dict[str, Any]:
@@ -292,7 +332,23 @@ async def create_config_admin(
     await log_action(
         session, admin_id, "create_config", target_type="config", target_id=str(config.id)
     )
-    return await enrich_config(session, config)
+    item = await enrich_config(session, config)
+    notified = await _notify_config_created(
+        body, user.tg_id, item, expiry_dt, start_after_first_use=start_after
+    )
+    if body.notify_user:
+        details = "notified" if notified else "notify_failed"
+        if body.user_message:
+            details += f" msg={body.user_message[:120]}"
+        await log_action(
+            session,
+            admin_id,
+            "notify_config_created",
+            target_type="user",
+            target_id=str(user.tg_id),
+            details=details,
+        )
+    return {**item, "notified": notified}
 
 
 async def update_config_admin(

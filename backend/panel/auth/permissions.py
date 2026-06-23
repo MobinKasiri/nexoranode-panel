@@ -179,6 +179,7 @@ ACTION_LABELS: dict[str, str] = {
     "ban_admin": "مسدودسازی مدیر",
     "unban_admin": "رفع مسدودیت مدیر",
     "create_config": "ایجاد سرویس",
+    "notify_config_created": "اطلاع‌رسانی سرویس به کاربر",
     "update_config": "ویرایش سرویس",
     "toggle_config": "تغییر وضعیت سرویس",
     "delete_config": "حذف سرویس",

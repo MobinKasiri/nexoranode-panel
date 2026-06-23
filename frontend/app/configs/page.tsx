@@ -22,6 +22,8 @@ import type { VPNConfigItem } from "@/types";
 function ConfigsContent() {
   const { admin } = useAuth();
   const canWrite = can(admin, "configs", "write");
+  const isSuperAdmin = Boolean(admin?.is_superadmin);
+  const showRowActions = canWrite || isSuperAdmin;
   const { page, limit, queryString, setPage, setLimit } = useTableQuery();
   const [items, setItems] = useState<VPNConfigItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -131,7 +133,7 @@ function ConfigsContent() {
             <table className="data-table">
               <thead>
                 <tr>
-                  {canWrite && <th>عملیات</th>}
+                  {showRowActions && <th>عملیات</th>}
                   <th>وضعیت</th>
                   <th>کلاینت</th>
                   <th>Inboundها</th>
@@ -146,18 +148,24 @@ function ConfigsContent() {
                   const remaining = Math.max(0, c.traffic_limit_bytes - c.traffic_used_bytes);
                   return (
                     <tr key={c.id}>
-                      {canWrite && (
+                      {showRowActions && (
                         <td>
                           <div className="flex gap-1 flex-wrap">
-                            <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
-                              ویرایش
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => toggle(c.id)}>
-                              {c.is_active ? "غیرفعال" : "فعال"}
-                            </Button>
-                            <Button size="sm" variant="danger" onClick={() => setDeleteTarget(c)}>
-                              حذف
-                            </Button>
+                            {isSuperAdmin && (
+                              <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
+                                ویرایش
+                              </Button>
+                            )}
+                            {canWrite && (
+                              <Button size="sm" variant="outline" onClick={() => toggle(c.id)}>
+                                {c.is_active ? "غیرفعال" : "فعال"}
+                              </Button>
+                            )}
+                            {isSuperAdmin && (
+                              <Button size="sm" variant="danger" onClick={() => setDeleteTarget(c)}>
+                                حذف
+                              </Button>
+                            )}
                           </div>
                         </td>
                       )}
@@ -204,7 +212,8 @@ function ConfigsContent() {
         onOpenChange={setModalOpen}
         config={editTarget}
         onSaved={load}
-        canWrite={canWrite}
+        canWrite={canWrite || isSuperAdmin}
+        canEdit={isSuperAdmin}
       />
 
       <ConfirmDialog

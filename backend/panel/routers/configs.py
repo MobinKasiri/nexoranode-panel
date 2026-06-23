@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from panel.auth.dependencies import require_permission
+from panel.auth.dependencies import require_permission, require_superadmin
 from panel.config import ensure_bot_path
 from panel.db.models import AdminUser
 from panel.db.session import get_db
@@ -91,7 +91,7 @@ async def update_config(
     config_id: int,
     body: UpdateConfigBody,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(require_permission("configs", "write")),
+    admin: AdminUser = Depends(require_superadmin),
 ):
     return await update_config_admin(session, admin.id, config_id, body)
 
@@ -110,7 +110,7 @@ async def delete_config_endpoint(
     config_id: int,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(require_permission("configs", "write")),
+    admin: AdminUser = Depends(require_superadmin),
 ):
     ensure_bot_path()
     from app.db.models import VPNConfig

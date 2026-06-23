@@ -23,6 +23,7 @@ interface ClientModalProps {
   config?: VPNConfigItem | null;
   onSaved: () => void;
   canWrite: boolean;
+  canEdit?: boolean;
 }
 
 function randomHex(n: number) {
@@ -35,13 +36,20 @@ function randomUuid() {
   return crypto.randomUUID();
 }
 
-export function ClientModal({ open, onOpenChange, config, onSaved, canWrite }: ClientModalProps) {
+export function ClientModal({ open, onOpenChange, config, onSaved, canWrite, canEdit }: ClientModalProps) {
   const isEdit = Boolean(config);
+  const allowSave = isEdit ? Boolean(canEdit) : canWrite;
   const [tab, setTab] = useState<"basics" | "credentials">("basics");
   const [inbounds, setInbounds] = useState<Inbound[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [userResults, setUserResults] = useState<UserItem[]>([]);
   const [saving, setSaving] = useState(false);
+  const [selectedUserLabel, setSelectedUserLabel] = useState("");
+  const [notifyUser, setNotifyUser] = useState(true);
+  const [userMessage, setUserMessage] = useState("");
+
+  const defaultUserMessage =
+    "سلام! یک سرویس VPN جدید برای شما فعال شد. جزئیات و لینک اشتراک در پیام زیر است.";
 
   const [form, setForm] = useState({
     user_id: 0,
@@ -62,6 +70,9 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite }: C
     if (!open) return;
     api.get<{ items: Inbound[] }>("/configs/inbounds").then((r) => setInbounds(r.items)).catch(() => {});
     if (config) {
+      setSelectedUserLabel("");
+      setNotifyUser(false);
+      setUserMessage("");
       setForm({
         user_id: config.user_id,
         service_name: config.service_name,
@@ -77,6 +88,9 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite }: C
         sub_id: config.subscription_id || "",
       });
     } else {
+      setSelectedUserLabel("");
+      setNotifyUser(true);
+      setUserMessage(defaultUserMessage);
       setForm({
         user_id: 0,
         service_name: `user${Math.floor(Math.random() * 900000 + 100000)}`,
@@ -121,7 +135,7 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite }: C
   };
 
   const save = async () => {
-    if (!canWrite) return;
+    if (!allowSave) return;
     if (!isEdit && !form.user_id) {
       toast.error("کاربر تلگرام الزامی است");
       return;
@@ -142,7 +156,7 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite }: C
         });
         toast.success("ذخیره شد");
       } else {
-        await api.post("/configs", {
+        const res = await api.post<{ notified?: boolean }>("/configs", {
           user_id: form.user_id,
           service_name: form.service_name,
           plan_gb: form.plan_gb,
@@ -155,8 +169,18 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite }: C
           comment: form.comment,
           uuid: form.uuid,
           sub_id: form.sub_id,
+          notify_user: notifyUser,
+          user_message: notifyUser && userMessage.trim() ? userMessage.trim() : null,
         });
-        toast.success("سرویس ایجاد شد");
+        if (notifyUser) {
+          if (res.notified) {
+            toast.success("سرویس ایجاد شد و به کاربر در ربات اطلاع داده شد");
+          } else {
+            toast.error("سرویس ایجاد شد اما ارسال پیام تلگرام ناموفق بود");
+          }
+        } else {
+          toast.success("سرویس ایجاد شد");
+        }
       }
       onSaved();
       onOpenChange(false);
@@ -206,6 +230,7 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite }: C
                         className="w-full text-right px-3 py-2 hover:bg-surface-hover text-sm"
                         onClick={() => {
                           setForm((f) => ({ ...f, user_id: u.tg_id }));
+                          setSelectedUserLabel(u.full_name || u.username || String(u.tg_id));
                           setUserSearch(u.full_name || u.username || String(u.tg_id));
                           setUserResults([]);
                         }}
@@ -217,8 +242,41 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite }: C
                 </ul>
               )}
               {form.user_id > 0 && (
-                <p className="text-xs text-primary mt-1 font-latin">tg_id: {form.user_id}</p>
+                <p className="text-xs text-primary mt-1">
+                  انتخاب شده: {selectedUserLabel || form.user_id}
+                  <span className="font-latin text-text-muted mr-2">({form.user_id})</span>
+                </p>
               )}
+            </div>
+          )}
+          {!isEdit && form.user_id > 0 && (
+            <div className="rounded-xl border border-border/80 bg-background/50 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-medium text-sm">اطلاع‌رسانی در ربات تلگرام</p>
+                <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
+                  <Checkbox
+                    checked={notifyUser}
+                    onCheckedChange={(c) => setNotifyUser(Boolean(c))}
+                  />
+                  ارسال پیام به کاربر
+                </label>
+              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                پس از ایجاد سرویس، پیامی با جزئیات کانفیگ و لینک اشتراک (همراه دکمه کپی) برای کاربر
+                ارسال می‌شود.
+              </p>
+              <div>
+                <label className="text-text-muted text-xs block mb-1.5">
+                  پیام شخصی پشتیبانی (اختیاری)
+                </label>
+                <textarea
+                  className="w-full min-h-[88px] rounded-lg border border-border bg-background px-3 py-2 text-sm resize-y disabled:opacity-50"
+                  placeholder={defaultUserMessage}
+                  value={userMessage}
+                  disabled={!notifyUser}
+                  onChange={(e) => setUserMessage(e.target.value)}
+                />
+              </div>
             </div>
           )}
           {!isEdit && (
@@ -346,7 +404,7 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite }: C
       )}
 
       <div className="flex gap-2 mt-6">
-        <Button onClick={save} disabled={saving || !canWrite}>
+        <Button onClick={save} disabled={saving || !allowSave}>
           {saving ? "در حال ذخیره…" : isEdit ? "ذخیره" : "ایجاد"}
         </Button>
         <Button variant="outline" onClick={() => onOpenChange(false)}>
