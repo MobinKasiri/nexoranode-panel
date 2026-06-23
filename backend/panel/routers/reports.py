@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from panel.auth.dependencies import get_current_admin
+from panel.auth.dependencies import require_permission
 from panel.config import ensure_bot_path, get_plan, load_plans
 from panel.db.models import AdminUser
 from panel.db.session import get_db
@@ -20,7 +20,7 @@ async def reports_summary(
     from_date: str | None = None,
     to_date: str | None = None,
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("reports", "read")),
 ):
     ensure_bot_path()
     from app.db.models import Transaction
@@ -62,7 +62,7 @@ async def reports_summary(
 @router.get("/charts/plans")
 async def sales_by_plan(
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("reports", "read")),
 ):
     ensure_bot_path()
     from app.db.models import Transaction
@@ -84,7 +84,7 @@ async def sales_by_plan(
 @router.get("/charts/payment-methods")
 async def payment_methods(
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("reports", "read")),
 ):
     ensure_bot_path()
     from app.db.models import Transaction
@@ -101,7 +101,7 @@ async def payment_methods(
 async def top_users(
     limit: int = Query(10, le=50),
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("reports", "read")),
 ):
     ensure_bot_path()
     from app.db.models import Transaction, User
@@ -129,7 +129,7 @@ async def top_users(
 @router.get("/export")
 async def export_report(
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("reports", "read")),
 ):
     from openpyxl import Workbook
 

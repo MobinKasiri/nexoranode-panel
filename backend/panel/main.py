@@ -17,6 +17,7 @@ from panel.db.models import AdminUser, Base
 from panel.db.session import async_session, engine
 from panel.auth.security import hash_password
 from panel.routers import (
+    activity,
     broadcast,
     configs,
     dashboard,
@@ -126,6 +127,7 @@ def create_app() -> FastAPI:
     app.include_router(maintenance.router)
     app.include_router(server.router)
     app.include_router(settings_router.router)
+    app.include_router(activity.router)
 
     @app.get("/health")
     async def health():

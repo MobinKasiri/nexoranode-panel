@@ -5,7 +5,7 @@ from sqlalchemy import cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.types import String
 
-from panel.auth.dependencies import get_current_admin
+from panel.auth.dependencies import require_permission
 from panel.config import ensure_bot_path
 from panel.db.models import AdminUser
 from panel.db.session import get_db
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/search", tags=["search"])
 async def global_search(
     q: str = Query(..., min_length=1),
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("dashboard", "read")),
 ):
     ensure_bot_path()
     from app.db.models import User, VPNConfig

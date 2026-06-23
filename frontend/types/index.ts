@@ -47,6 +47,7 @@ export interface VPNConfigItem {
   service_name: string;
   user_id: number;
   username?: string;
+  full_name?: string;
   plan_gb: number;
   plan_days: number;
   traffic_used_bytes: number;
@@ -54,6 +55,13 @@ export interface VPNConfigItem {
   expiry_date?: string;
   is_active: boolean;
   subscription_url?: string;
+  panel_email?: string;
+  panel_uuid?: string;
+  subscription_id?: string;
+  inbound_ids?: number[];
+  inbound_remarks?: string[];
+  comment?: string;
+  limit_ip?: number;
 }
 
 export interface DashboardStats {

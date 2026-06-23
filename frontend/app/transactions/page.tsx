@@ -14,7 +14,10 @@ import { Modal } from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChips } from "@/components/ui/filter-chips";
+import { CopyableValue } from "@/components/ui/CopyableValue";
+import { TablePagination } from "@/components/ui/TablePagination";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useTableQuery } from "@/hooks/useTableQuery";
 import { api } from "@/lib/api";
 import { ReceiptImage } from "@/components/transactions/ReceiptImage";
 import { formatDate, formatToman, toPersianDigits } from "@/lib/utils";
@@ -35,12 +38,13 @@ const TYPE_LABELS: Record<string, string> = {
 
 function TransactionsContent() {
   const searchParams = useSearchParams();
+  const { page, limit, queryString, setPage, setLimit, setParams } = useTableQuery(["status", "search"]);
   const [items, setItems] = useState<Transaction[]>([]);
   const [total, setTotal] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(searchParams.get("status") || "");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(searchParams.get("search") || "");
   const debouncedSearch = useDebounce(search);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [detail, setDetail] = useState<Transaction | null>(null);
@@ -54,7 +58,7 @@ function TransactionsContent() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(queryString);
       if (status) params.set("status", status);
       if (debouncedSearch) params.set("search", debouncedSearch);
       const data = await api.get<{ items: Transaction[]; total: number; pending_count: number }>(
@@ -68,7 +72,11 @@ function TransactionsContent() {
     } finally {
       setLoading(false);
     }
-  }, [status, debouncedSearch]);
+  }, [status, debouncedSearch, queryString]);
+
+  useEffect(() => {
+    setParams({ status: status || null, search: debouncedSearch || null, page: 1 }, true);
+  }, [status, debouncedSearch, setParams]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -225,17 +233,25 @@ function TransactionsContent() {
             </tbody>
           </table>
         )}
+        {!loading && items.length > 0 && (
+          <TablePagination
+            page={page}
+            limit={limit}
+            total={total}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+          />
+        )}
       </Card>
-      {!loading && items.length > 0 && (
-        <p className="text-text-muted text-xs mt-3">{toPersianDigits(total)} تراکنش</p>
-      )}
 
       {selected && (
         <div className="fixed inset-0 z-50 flex">
           <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={closePanel} aria-hidden />
           <div className="panel-slide">
             <div className="sticky top-0 z-10 flex items-center justify-between gap-3 p-4 border-b border-border bg-surface/95 backdrop-blur">
-              <h2 className="text-lg font-bold">تراکنش #{toPersianDigits(selected.id)}</h2>
+              <h2 className="text-lg font-bold">
+                تراکنش #<CopyableValue value={selected.id} />
+              </h2>
               <button
                 type="button"
                 onClick={closePanel}
@@ -256,32 +272,42 @@ function TransactionsContent() {
               ) : detail ? (
                 <div className="space-y-6 text-sm">
                   <Section title="اطلاعات کاربر">
-                    <Row label="نام" value={detail.user?.full_name} />
-                    <Row label="یوزرنیم" value={detail.user?.username ? `@${detail.user.username}` : "—"} />
-                    <Row label="آیدی" value={String(detail.user?.tg_id)} />
-                    <Row label="موجودی" value={formatToman(detail.user?.balance || 0)} />
-                    <Row label="خریدهای قبلی" value={toPersianDigits(detail.user_purchase_count || 0)} />
+                    <DetailRow label="نام" value={detail.user?.full_name} />
+                    <DetailRow label="یوزرنیم" value={detail.user?.username ? `@${detail.user.username}` : "—"} />
+                    <DetailRow label="آیدی" copyValue={detail.user?.tg_id} />
+                    <DetailRow label="موجودی" copyValue={detail.user?.balance} />
+                    <DetailRow label="خریدهای قبلی" copyValue={detail.user_purchase_count ?? 0} />
                   </Section>
                   <Section title="جزئیات تراکنش">
-                    <Row label="نوع" value={TYPE_LABELS[detail.type] || detail.type} />
-                    <Row
+                    <DetailRow label="نوع" value={TYPE_LABELS[detail.type] || detail.type} />
+                    <DetailRow
                       label="پلن"
                       value={
                         detail.plan
-                          ? `${detail.plan.tier_name || ""} ${toPersianDigits(detail.plan.gb)} گیگ / ${toPersianDigits(detail.plan.days)} روز`
+                          ? `${detail.plan.tier_name || ""} ${detail.plan.gb} GB / ${detail.plan.days} days`
                           : "—"
                       }
                     />
-                    <Row label="مبلغ" value={formatToman(detail.payment_amount || detail.amount)} />
+                    <DetailRow label="مبلغ" copyValue={detail.payment_amount || detail.amount} />
                     {detail.discount_code && (
-                      <Row label="تخفیف" value={`${detail.discount_code} (-${formatToman(detail.discount_amount)})`} />
+                      <DetailRow
+                        label="تخفیف"
+                        value={`${detail.discount_code} (-${detail.discount_amount})`}
+                        copyValue={detail.discount_amount}
+                      />
                     )}
-                    <Row label="روش" value={detail.payment_method === "card" ? "کارت به کارت" : "کیف پول"} />
-                    <Row label="زمان" value={formatDate(detail.created_at)} />
-                    {detail.service_name && <Row label="نام سرویس" value={detail.service_name} />}
+                    <DetailRow label="روش" value={detail.payment_method === "card" ? "کارت به کارت" : "کیف پول"} />
+                    <DetailRow label="زمان" value={formatDate(detail.created_at)} />
+                    {detail.service_name && <DetailRow label="نام سرویس" value={detail.service_name} />}
                   </Section>
                   {detail.has_receipt && (
                     <Section title="تصویر رسید">
+                      <div className="flex flex-wrap gap-4 mb-3 text-xs">
+                        <span className="text-text-muted">شناسه تراکنش:</span>
+                        <CopyableValue value={detail.id} />
+                        <span className="text-text-muted">آیدی کاربر:</span>
+                        <CopyableValue value={detail.user?.tg_id} />
+                      </div>
                       <ReceiptImage
                         txId={detail.id}
                         className="w-full rounded-lg cursor-zoom-in border border-border hover:border-primary/50 transition-colors"
@@ -356,11 +382,23 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Row({ label, value }: { label: string; value?: string }) {
+function DetailRow({
+  label,
+  value,
+  copyValue,
+}: {
+  label: string;
+  value?: string;
+  copyValue?: string | number;
+}) {
   return (
     <div className="flex justify-between gap-4 py-1">
       <span className="text-text-muted shrink-0">{label}</span>
-      <span className="text-left font-latin">{value || "—"}</span>
+      {copyValue !== undefined ? (
+        <CopyableValue value={copyValue} />
+      ) : (
+        <span className="text-left">{value || "—"}</span>
+      )}
     </div>
   );
 }

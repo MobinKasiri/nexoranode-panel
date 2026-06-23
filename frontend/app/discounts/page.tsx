@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { ChevronDown, ChevronUp, Download, Tag, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/layout/Sidebar";
@@ -14,7 +14,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExpiryDateField } from "@/components/discounts/ExpiryDateField";
-import { api } from "@/lib/api";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { useTableQuery } from "@/hooks/useTableQuery";
 import { cn, discountStatusLabel, formatDate, formatToman, toPersianDigits } from "@/lib/utils";
 
 interface DiscountItem {
@@ -38,7 +39,17 @@ interface UsageRow {
 }
 
 export default function DiscountsPage() {
+  return (
+    <Suspense fallback={<AppShell><Skeleton className="h-64" /></AppShell>}>
+      <DiscountsContent />
+    </Suspense>
+  );
+}
+
+function DiscountsContent() {
+  const { page, limit, queryString, setPage, setLimit } = useTableQuery();
   const [items, setItems] = useState<DiscountItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [code, setCode] = useState("");
@@ -63,15 +74,18 @@ export default function DiscountsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [usagePage, setUsagePage] = useState(1);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     api
-      .get<{ items: DiscountItem[] }>("/discounts")
-      .then((d) => setItems(d.items))
+      .get<{ items: DiscountItem[]; total: number }>(`/discounts?${queryString}`)
+      .then((d) => {
+        setItems(d.items);
+        setTotal(d.total);
+      })
       .finally(() => setLoading(false));
-  };
+  }, [queryString]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const loadDetail = (id: number, page = 1) => {
     setDetailLoading(true);
@@ -274,6 +288,15 @@ export default function DiscountsPage() {
               })}
             </tbody>
           </table>
+        )}
+        {!loading && items.length > 0 && (
+          <TablePagination
+            page={page}
+            limit={limit}
+            total={total}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+          />
         )}
       </Card>
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { RefreshCw, Shield } from "lucide-react";
+import { Plus, RefreshCw, Shield } from "lucide-react";
 import { AppShell } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -10,27 +10,43 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { ClientModal } from "@/components/configs/ClientModal";
+import { useTableQuery } from "@/hooks/useTableQuery";
+import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 import { formatBytes, formatDate, trafficBarColor, trafficPercent } from "@/lib/utils";
+import { hasPermission as can } from "@/lib/permissions";
 import type { VPNConfigItem } from "@/types";
 
-export default function ConfigsPage() {
+function ConfigsContent() {
+  const { admin } = useAuth();
+  const canWrite = can(admin, "configs", "write");
+  const { page, limit, queryString, setPage, setLimit } = useTableQuery();
   const [items, setItems] = useState<VPNConfigItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<VPNConfigItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<VPNConfigItem | null>(null);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     api
-      .get<{ items: VPNConfigItem[] }>("/configs")
-      .then((d) => setItems(d.items))
+      .get<{ items: VPNConfigItem[]; total: number }>(`/configs?${queryString}`)
+      .then((d) => {
+        setItems(d.items);
+        setTotal(d.total);
+      })
       .catch((e) => toast.error(e instanceof Error ? e.message : "خطا"))
       .finally(() => setLoading(false));
-  };
+  }, [queryString]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const syncAll = async () => {
     setSyncing(true);
@@ -72,16 +88,36 @@ export default function ConfigsPage() {
     }
   };
 
+  const openCreate = () => {
+    setEditTarget(null);
+    setModalOpen(true);
+  };
+
+  const openEdit = (c: VPNConfigItem) => {
+    setEditTarget(c);
+    setModalOpen(true);
+  };
+
   return (
     <AppShell>
       <PageHeader
         title="مدیریت سرویس‌ها"
-        description="مشاهده و همگام‌سازی کانفیگ‌های VPN کاربران"
+        description="مشاهده و مدیریت کانفیگ‌های VPN کاربران"
         actions={
-          <Button onClick={syncAll} disabled={syncing} size="sm">
-            <RefreshCw size={16} className={`ml-2 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "همگام‌سازی..." : "همگام‌سازی همه"}
-          </Button>
+          <div className="flex gap-2">
+            {canWrite && (
+              <Button onClick={openCreate} size="sm">
+                <Plus size={16} className="ml-2" />
+                افزودن
+              </Button>
+            )}
+            {canWrite && (
+              <Button onClick={syncAll} disabled={syncing} size="sm" variant="outline">
+                <RefreshCw size={16} className={`ml-2 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "همگام‌سازی..." : "همگام‌سازی همه"}
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -89,53 +125,87 @@ export default function ConfigsPage() {
         {loading ? (
           <div className="p-4 space-y-3">{[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-12" />)}</div>
         ) : items.length === 0 ? (
-          <EmptyState icon={Shield} title="سرویسی یافت نشد" description="هنوز کانفیگی ثبت نشده یا فیلتر نتیجه‌ای ندارد" />
+          <EmptyState icon={Shield} title="سرویسی یافت نشد" description="هنوز کانفیگی ثبت نشده" />
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>نام</th>
-                <th>کاربر</th>
-                <th>مصرف</th>
-                <th>انقضا</th>
-                <th>عملیات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((c) => {
-                const pct = trafficPercent(c.traffic_used_bytes, c.traffic_limit_bytes);
-                return (
-                  <tr key={c.id}>
-                    <td className="font-medium">{c.service_name}</td>
-                    <td className="text-text-secondary">@{c.username || c.user_id}</td>
-                    <td>
-                      <div className="flex items-center gap-2 min-w-[140px]">
-                        <div className="h-2 flex-1 max-w-24 rounded-full bg-border overflow-hidden">
-                          <div className={`h-full ${trafficBarColor(pct)}`} style={{ width: `${pct}%` }} />
+          <>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  {canWrite && <th>عملیات</th>}
+                  <th>وضعیت</th>
+                  <th>کلاینت</th>
+                  <th>Inboundها</th>
+                  <th>ترافیک</th>
+                  <th>باقیمانده</th>
+                  <th>مدت</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((c) => {
+                  const pct = trafficPercent(c.traffic_used_bytes, c.traffic_limit_bytes);
+                  const remaining = Math.max(0, c.traffic_limit_bytes - c.traffic_used_bytes);
+                  return (
+                    <tr key={c.id}>
+                      {canWrite && (
+                        <td>
+                          <div className="flex gap-1 flex-wrap">
+                            <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
+                              ویرایش
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => toggle(c.id)}>
+                              {c.is_active ? "غیرفعال" : "فعال"}
+                            </Button>
+                            <Button size="sm" variant="danger" onClick={() => setDeleteTarget(c)}>
+                              حذف
+                            </Button>
+                          </div>
+                        </td>
+                      )}
+                      <td>{c.is_active ? "فعال" : "غیرفعال"}</td>
+                      <td>
+                        <div className="font-medium font-latin">{c.service_name}</div>
+                        <div className="text-xs text-text-muted">@{c.username || c.user_id}</div>
+                      </td>
+                      <td className="text-xs max-w-[160px] truncate">
+                        {(c.inbound_remarks || []).join(", ") || "—"}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2 min-w-[120px]">
+                          <div className="h-2 flex-1 max-w-20 rounded-full bg-border overflow-hidden">
+                            <div className={`h-full ${trafficBarColor(pct)}`} style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-xs text-text-muted whitespace-nowrap font-latin">
+                            {formatBytes(c.traffic_used_bytes)}
+                          </span>
                         </div>
-                        <span className="text-xs text-text-muted whitespace-nowrap">
-                          {formatBytes(c.traffic_used_bytes)}/{formatBytes(c.traffic_limit_bytes)}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="text-text-secondary whitespace-nowrap">{formatDate(c.expiry_date)}</td>
-                    <td>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="outline" onClick={() => toggle(c.id)}>
-                          {c.is_active ? "غیرفعال" : "فعال"}
-                        </Button>
-                        <Button size="sm" variant="danger" onClick={() => setDeleteTarget(c)}>
-                          حذف
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="font-latin text-xs">{formatBytes(remaining)}</td>
+                      <td className="text-text-secondary whitespace-nowrap text-xs">
+                        {formatDate(c.expiry_date) || `${c.plan_days} روز`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <TablePagination
+              page={page}
+              limit={limit}
+              total={total}
+              onPageChange={setPage}
+              onLimitChange={setLimit}
+            />
+          </>
         )}
       </Card>
+
+      <ClientModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        config={editTarget}
+        onSaved={load}
+        canWrite={canWrite}
+      />
 
       <ConfirmDialog
         open={deleteTarget !== null}
@@ -147,19 +217,20 @@ export default function ConfigsPage() {
         onConfirm={confirmDelete}
         description={
           deleteTarget ? (
-            <>
-              <p>
-                سرویس <strong>{deleteTarget.service_name}</strong> برای کاربر{" "}
-                <strong>@{deleteTarget.username || deleteTarget.user_id}</strong> حذف می‌شود.
-              </p>
-              <p className="text-text-muted text-xs mt-2">
-                پلن: {deleteTarget.plan_gb} GB · {deleteTarget.plan_days} روز · مصرف{" "}
-                {formatBytes(deleteTarget.traffic_used_bytes)}
-              </p>
-            </>
+            <p>
+              سرویس <strong>{deleteTarget.service_name}</strong> حذف می‌شود.
+            </p>
           ) : null
         }
       />
     </AppShell>
+  );
+}
+
+export default function ConfigsPage() {
+  return (
+    <Suspense fallback={<AppShell><Skeleton className="h-64" /></AppShell>}>
+      <ConfigsContent />
+    </Suspense>
   );
 }

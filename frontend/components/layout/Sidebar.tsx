@@ -1,66 +1,91 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, CreditCard, Users, Shield, Tag, BarChart3, Radio, Settings, LogOut, Menu, X,
   ChevronDown, Bell, type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn, adminRoleLabel, toPersianDigits } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { useRouter } from "next/navigation";
 import { SearchCommand } from "@/components/layout/SearchCommand";
+import { useAuth, clearAuthCache } from "@/hooks/useAuth";
+import {
+  canAccessRoute,
+  hasPermission,
+  type SectionKey,
+} from "@/lib/permissions";
 
-type NavItem = { href: string; label: string; icon: LucideIcon };
+type NavItem = { href: string; label: string; icon: LucideIcon; section: SectionKey };
 
 type NavGroup = { id: string; label: string; items: NavItem[] };
 
-const groups: NavGroup[] = [
+const ALL_GROUPS: NavGroup[] = [
   {
     id: "main",
     label: "داشبورد",
-    items: [{ href: "/dashboard", label: "نمای کلی", icon: LayoutDashboard }],
+    items: [{ href: "/dashboard", label: "نمای کلی", icon: LayoutDashboard, section: "dashboard" }],
   },
   {
     id: "access",
     label: "کاربران و دسترسی",
     items: [
-      { href: "/users", label: "کاربران", icon: Users },
-      { href: "/settings", label: "تنظیمات", icon: Settings },
+      { href: "/users", label: "کاربران", icon: Users, section: "users" },
+      { href: "/settings", label: "تنظیمات", icon: Settings, section: "settings_plans" },
     ],
   },
   {
     id: "billing",
     label: "مالی",
     items: [
-      { href: "/transactions", label: "تراکنش‌ها", icon: CreditCard },
-      { href: "/reports", label: "گزارش‌ها", icon: BarChart3 },
-      { href: "/discounts", label: "تخفیف‌ها", icon: Tag },
+      { href: "/transactions", label: "تراکنش‌ها", icon: CreditCard, section: "transactions" },
+      { href: "/reports", label: "گزارش‌ها", icon: BarChart3, section: "reports" },
+      { href: "/discounts", label: "تخفیف‌ها", icon: Tag, section: "discounts" },
     ],
   },
   {
     id: "configs",
     label: "سرویس‌ها",
-    items: [{ href: "/configs", label: "سرویس‌های VPN", icon: Shield }],
+    items: [{ href: "/configs", label: "سرویس‌های VPN", icon: Shield, section: "configs" }],
   },
   {
     id: "comm",
     label: "ارتباطات",
-    items: [{ href: "/broadcast", label: "پیام همگانی", icon: Radio }],
+    items: [{ href: "/broadcast", label: "پیام همگانی", icon: Radio, section: "broadcast" }],
   },
 ];
+
+function filterGroups(admin: ReturnType<typeof useAuth>["admin"]) {
+  if (!admin) return [];
+  return ALL_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((item) => {
+      if (item.href === "/settings") {
+        return (
+          hasPermission(admin, "settings_plans", "read") ||
+          hasPermission(admin, "settings_maintenance", "read") ||
+          hasPermission(admin, "settings_payment", "read") ||
+          admin.is_superadmin
+        );
+      }
+      return hasPermission(admin, item.section, "read");
+    }),
+  })).filter((g) => g.items.length > 0);
+}
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { admin, loading } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [me, setMe] = useState<{ id: number; username: string; full_name: string; role: string } | null>(null);
   const [activityCount, setActivityCount] = useState(0);
 
+  const groups = useMemo(() => filterGroups(admin), [admin]);
+
   useEffect(() => {
-    api.me().then(setMe).catch(() => setMe(null));
+    if (!hasPermission(admin, "activity", "read")) return;
     api.get<{ items: { at?: string; created_at?: string }[] }>("/dashboard/activity?limit=20").then((d) => {
       const dayAgo = Date.now() - 86400000;
       setActivityCount(
@@ -70,9 +95,10 @@ export function Sidebar() {
         }).length
       );
     }).catch(() => setActivityCount(0));
-  }, [pathname]);
+  }, [pathname, admin]);
 
   const logout = async () => {
+    clearAuthCache();
     await api.logout();
     router.push("/login");
   };
@@ -136,31 +162,33 @@ export function Sidebar() {
       </nav>
 
       <div className="shrink-0 p-3 border-t border-border space-y-2">
-        <Link
-          href="/activity"
-          className={cn(
-            "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
-            pathname.startsWith("/activity")
-              ? "bg-primary/15 text-primary font-medium"
-              : "text-text-secondary hover:bg-surface-hover"
-          )}
-        >
-          <Bell size={18} />
-          فعالیت‌ها
-          {activityCount > 0 && (
-            <span className="mr-auto rounded-full bg-primary px-2 py-0.5 text-xs text-white tabular-nums">
-              {toPersianDigits(activityCount)}
-            </span>
-          )}
-        </Link>
-        {me && (
+        {hasPermission(admin, "activity", "read") && (
+          <Link
+            href="/activity"
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+              pathname.startsWith("/activity")
+                ? "bg-primary/15 text-primary font-medium"
+                : "text-text-secondary hover:bg-surface-hover"
+            )}
+          >
+            <Bell size={18} />
+            فعالیت‌ها
+            {activityCount > 0 && (
+              <span className="mr-auto rounded-full bg-primary px-2 py-0.5 text-xs text-white tabular-nums">
+                {toPersianDigits(activityCount)}
+              </span>
+            )}
+          </Link>
+        )}
+        {admin && (
           <div className="flex items-center gap-3 rounded-lg bg-background/80 border border-border px-3 py-2.5">
             <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-sm font-bold">
-              {(me.full_name || me.username).charAt(0).toUpperCase()}
+              {(admin.full_name || admin.username).charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">{me.full_name || me.username}</p>
-              <p className="text-xs text-text-muted">{adminRoleLabel(me.role)}</p>
+              <p className="text-sm font-medium truncate">{admin.full_name || admin.username}</p>
+              <p className="text-xs text-text-muted">{adminRoleLabel(admin.role)}</p>
             </div>
           </div>
         )}
@@ -204,6 +232,31 @@ export function Sidebar() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { admin, loading } = useAuth();
+
+  useEffect(() => {
+    if (loading) return;
+    if (!admin) {
+      router.replace("/login");
+      return;
+    }
+    if (!canAccessRoute(admin, pathname)) {
+      router.replace("/dashboard");
+    }
+  }, [admin, loading, pathname, router]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center text-text-muted">
+        در حال بارگذاری…
+      </div>
+    );
+  }
+
+  if (!admin) return null;
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />

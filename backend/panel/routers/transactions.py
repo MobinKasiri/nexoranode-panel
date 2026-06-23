@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from panel.auth.dependencies import get_current_admin
+from panel.auth.dependencies import require_permission
 from panel.config import ensure_bot_path, get_plan
 from panel.db.models import AdminUser
 from panel.db.session import get_db
@@ -72,7 +72,7 @@ async def list_transactions(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("transactions", "read")),
 ):
     Transaction, User, _ = _ensure_bot()
     q = select(Transaction).options(selectinload(Transaction.user)).order_by(Transaction.created_at.desc())
@@ -135,7 +135,7 @@ async def list_transactions(
 async def export_transactions(
     status: str | None = None,
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("transactions", "read")),
 ):
     from openpyxl import Workbook
 
@@ -177,7 +177,7 @@ async def export_transactions(
 async def get_transaction(
     tx_id: int,
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("transactions", "read")),
 ):
     Transaction, User, _ = _ensure_bot()
     tx = await Transaction.get(session, tx_id)
@@ -219,7 +219,7 @@ async def get_transaction(
 async def get_receipt(
     tx_id: int,
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("transactions", "read")),
 ):
     Transaction, _, _ = _ensure_bot()
     tx = await Transaction.get(session, tx_id)
@@ -251,7 +251,7 @@ async def get_receipt(
 async def approve(
     tx_id: int,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("transactions", "write")),
 ):
     try:
         return await approve_transaction(session, tx_id, admin.id)
@@ -264,7 +264,7 @@ async def reject(
     tx_id: int,
     body: RejectBody,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("transactions", "write")),
 ):
     try:
         return await reject_transaction(session, tx_id, admin.id, body.reason)

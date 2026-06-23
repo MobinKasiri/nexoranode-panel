@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from slowapi import Limiter
@@ -9,15 +7,16 @@ from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from panel.auth.dependencies import get_current_admin
+from panel.auth.permissions import admin_to_dict
 from panel.auth.security import (
     authenticate_admin,
     create_access_token,
     create_refresh_token,
     decode_token,
 )
+from panel.config import get_settings
 from panel.db.models import AdminUser
 from panel.db.session import get_db
-from panel.config import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 limiter = Limiter(key_func=get_remote_address)
@@ -33,12 +32,20 @@ class AdminOut(BaseModel):
     username: str
     full_name: str
     role: str
+    role_preset: str = "custom"
+    permissions: dict[str, str] = {}
+    is_superadmin: bool = False
 
 
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     admin: AdminOut
+
+
+def _admin_out(admin: AdminUser) -> AdminOut:
+    data = admin_to_dict(admin)
+    return AdminOut(**data)
 
 
 def _set_auth_cookies(response: Response, access: str, refresh: str) -> None:
@@ -69,18 +76,18 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="اطلاعات ورود نادرست است",
         )
+    if not admin.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="حساب مدیر مسدود یا غیرفعال است",
+        )
     access = create_access_token({"sub": admin.username, "role": admin.role})
     refresh = create_refresh_token({"sub": admin.username})
     _set_auth_cookies(response, access, refresh)
     return TokenResponse(
         access_token=access,
         refresh_token=refresh,
-        admin=AdminOut(
-            id=admin.id,
-            username=admin.username,
-            full_name=admin.full_name,
-            role=admin.role,
-        ),
+        admin=_admin_out(admin),
     )
 
 
@@ -109,7 +116,7 @@ async def refresh_token(
 
     admin = await get_admin_by_username(session, payload["sub"])
     if not admin or not admin.is_active:
-        raise HTTPException(status_code=401, detail="Inactive admin")
+        raise HTTPException(status_code=401, detail="حساب مدیر مسدود یا غیرفعال است")
 
     access = create_access_token({"sub": admin.username, "role": admin.role})
     new_refresh = create_refresh_token({"sub": admin.username})
@@ -117,12 +124,7 @@ async def refresh_token(
     return TokenResponse(
         access_token=access,
         refresh_token=new_refresh,
-        admin=AdminOut(
-            id=admin.id,
-            username=admin.username,
-            full_name=admin.full_name,
-            role=admin.role,
-        ),
+        admin=_admin_out(admin),
     )
 
 
@@ -135,9 +137,4 @@ async def logout(response: Response) -> dict:
 
 @router.get("/me", response_model=AdminOut)
 async def me(admin: AdminUser = Depends(get_current_admin)) -> AdminOut:
-    return AdminOut(
-        id=admin.id,
-        username=admin.username,
-        full_name=admin.full_name,
-        role=admin.role,
-    )
+    return _admin_out(admin)

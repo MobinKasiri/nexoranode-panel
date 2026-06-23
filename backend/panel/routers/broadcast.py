@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from panel.auth.dependencies import get_current_admin
+from panel.auth.dependencies import require_permission
 from panel.config import ensure_bot_path
 from panel.db.models import AdminUser
 from panel.db.session import get_db
@@ -53,19 +54,30 @@ async def _get_target_users(session: AsyncSession, target: str, user_ids: list[i
     return all_users
 
 
-@router.post("/send")
-async def send_broadcast(
-    body: BroadcastBody,
-    session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
-):
-    users = await _get_target_users(session, body.target, body.user_ids)
+async def _dispatch_broadcast(
+    session: AsyncSession,
+    admin: AdminUser,
+    message: str,
+    target: str,
+    user_ids: list[int] | None,
+    photo_bytes: bytes | None,
+    photo_filename: str,
+) -> dict:
+    users = await _get_target_users(session, target, user_ids)
     tg = TelegramService()
     sent = 0
     failed = 0
     for user in users:
         try:
-            ok = await tg.send_message(user.tg_id, body.message)
+            if photo_bytes:
+                ok = await tg.send_photo(
+                    user.tg_id,
+                    photo_bytes,
+                    caption=message,
+                    filename=photo_filename,
+                )
+            else:
+                ok = await tg.send_message(user.tg_id, message)
             if ok:
                 sent += 1
             else:
@@ -73,18 +85,74 @@ async def send_broadcast(
         except Exception:
             failed += 1
         await asyncio.sleep(0.05)
+
+    action = "broadcast_photo" if photo_bytes else "broadcast"
     await log_action(
-        session, admin.id, "broadcast",
-        details=f"sent={sent} failed={failed} target={body.target}",
+        session,
+        admin.id,
+        action,
+        details=f"sent={sent} failed={failed} target={target}",
     )
     return {"sent": sent, "failed": failed, "total": len(users)}
+
+
+@router.post("/send")
+async def send_broadcast(
+    session: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(require_permission("broadcast", "write")),
+    message: str = Form(""),
+    target: str = Form("all"),
+    user_ids: str | None = Form(None),
+    photo: UploadFile | None = File(None),
+):
+    parsed_ids: list[int] | None = None
+    if user_ids:
+        try:
+            raw = json.loads(user_ids)
+            if isinstance(raw, list):
+                parsed_ids = [int(x) for x in raw]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            parsed_ids = None
+
+    photo_bytes: bytes | None = None
+    photo_filename = "photo.jpg"
+    if photo and photo.filename:
+        photo_bytes = await photo.read()
+        photo_filename = photo.filename
+
+    if not message.strip() and not photo_bytes:
+        return {"sent": 0, "failed": 0, "total": 0, "error": "message or photo required"}
+
+    return await _dispatch_broadcast(
+        session, admin, message, target, parsed_ids, photo_bytes, photo_filename
+    )
+
+
+@router.post("/send-json")
+async def send_broadcast_json(
+    body: BroadcastBody,
+    session: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(require_permission("broadcast", "write")),
+):
+    return await _dispatch_broadcast(
+        session, admin, body.message, body.target, body.user_ids, None, "photo.jpg"
+    )
 
 
 @router.get("/count")
 async def broadcast_count(
     target: str = "all",
+    user_ids: str | None = None,
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("broadcast", "read")),
 ):
-    users = await _get_target_users(session, target, None)
+    parsed_ids: list[int] | None = None
+    if user_ids:
+        try:
+            raw = json.loads(user_ids)
+            if isinstance(raw, list):
+                parsed_ids = [int(x) for x in raw]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            parsed_ids = None
+    users = await _get_target_users(session, target, parsed_ids)
     return {"count": len(users)}

@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from panel.auth.dependencies import get_current_admin, require_superadmin
+from panel.auth.dependencies import require_permission, require_superadmin
+from panel.auth.permissions import (
+    PRESET_LABELS_FA,
+    ROLE_PRESETS,
+    SECTION_LABELS_FA,
+    SECTIONS,
+    admin_to_dict,
+    merge_permissions,
+)
 from panel.auth.security import hash_password
 from panel.config import get_settings, load_payment_info, load_plans, plans_diagnostics, save_plans
 from panel.db.models import AdminUser
@@ -23,10 +32,31 @@ class CreateAdminBody(BaseModel):
     username: str
     password: str
     full_name: str = ""
+    role_preset: str = "visitor"
+    permissions: dict[str, str] | None = None
+
+
+class UpdateAdminBody(BaseModel):
+    full_name: str | None = None
+    role_preset: str | None = None
+    permissions: dict[str, str] | None = None
+    password: str | None = Field(default=None, min_length=6)
+
+
+@router.get("/permissions-meta")
+async def permissions_meta(
+    _admin: AdminUser = Depends(require_superadmin),
+):
+    return {
+        "sections": SECTIONS,
+        "section_labels": SECTION_LABELS_FA,
+        "presets": list(ROLE_PRESETS.keys()) + ["custom"],
+        "preset_labels": PRESET_LABELS_FA,
+    }
 
 
 @router.get("/plans")
-async def get_plans(_admin: AdminUser = Depends(get_current_admin)):
+async def get_plans(_admin: AdminUser = Depends(require_permission("settings_plans", "read"))):
     try:
         data = load_plans()
         if not data:
@@ -43,15 +73,14 @@ async def get_plans(_admin: AdminUser = Depends(get_current_admin)):
 
 
 @router.get("/plans/debug")
-async def get_plans_debug(_admin: AdminUser = Depends(get_current_admin)):
-    """Path/mount diagnostics for plans.json (admin only)."""
+async def get_plans_debug(_admin: AdminUser = Depends(require_permission("settings_plans", "read"))):
     return plans_diagnostics()
 
 
 @router.put("/plans")
 async def update_plans(
     data: dict,
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("settings_plans", "write")),
     session: AsyncSession = Depends(get_db),
 ):
     if not isinstance(data, dict) or not data:
@@ -89,7 +118,7 @@ async def update_plans(
 
 
 @router.get("/payment")
-async def get_payment(_admin: AdminUser = Depends(get_current_admin)):
+async def get_payment(_admin: AdminUser = Depends(require_permission("settings_payment", "read"))):
     info = load_payment_info()
     note = "تغییرات پرداخت از طریق فایل .env انجام می‌شود"
     if not info["card_number"]:
@@ -101,7 +130,7 @@ async def get_payment(_admin: AdminUser = Depends(get_current_admin)):
 
 
 @router.get("/system")
-async def get_system(_admin: AdminUser = Depends(get_current_admin)):
+async def get_system(_admin: AdminUser = Depends(require_permission("dashboard", "read"))):
     s = get_settings()
     return {
         "referral_bonus_toman": s.REFERRAL_BONUS_TOMAN,
@@ -113,12 +142,10 @@ async def get_system(_admin: AdminUser = Depends(get_current_admin)):
 @router.get("/admins")
 async def list_admins(
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_superadmin),
 ):
     try:
-        result = await session.execute(
-            select(AdminUser).where(AdminUser.is_active.is_(True)).order_by(AdminUser.created_at)
-        )
+        result = await session.execute(select(AdminUser).order_by(AdminUser.created_at))
         admins = result.scalars().all()
     except Exception as exc:
         logger.exception("Failed to list admins")
@@ -126,42 +153,120 @@ async def list_admins(
             503,
             "خطا در اتصال به پایگاه داده. DATABASE_URL و شبکه Docker را بررسی کنید.",
         ) from exc
-    return {
-        "items": [
-            {
-                "id": a.id,
-                "username": a.username,
-                "full_name": a.full_name,
-                "role": a.role,
-                "is_active": a.is_active,
-                "last_login": a.last_login.isoformat() if a.last_login else None,
-            }
-            for a in admins
-        ]
-    }
+    return {"items": [admin_to_dict(a) for a in admins]}
 
 
 @router.post("/admins")
 async def create_admin(
     body: CreateAdminBody,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_superadmin),
 ):
     existing = await session.execute(
         select(AdminUser).where(AdminUser.username == body.username)
     )
     if existing.scalar_one_or_none():
         raise HTTPException(400, "نام کاربری تکراری است")
+
+    preset = body.role_preset if body.role_preset in ROLE_PRESETS or body.role_preset == "custom" else "visitor"
+    perms = merge_permissions(preset, body.permissions)
+    perms.pop("settings_admins", None)
+
     new_admin = AdminUser(
         username=body.username,
         password_hash=hash_password(body.password),
         full_name=body.full_name or body.username,
         role="admin",
+        role_preset=preset,
+        permissions=perms,
     )
     session.add(new_admin)
     await session.commit()
+    await session.refresh(new_admin)
     await log_action(session, admin.id, "create_admin", target_type="admin", target_id=body.username)
-    return {"success": True, "id": new_admin.id}
+    return {"success": True, "id": new_admin.id, "admin": admin_to_dict(new_admin)}
+
+
+@router.patch("/admins/{admin_id}")
+async def update_admin(
+    admin_id: int,
+    body: UpdateAdminBody,
+    session: AsyncSession = Depends(get_db),
+    superadmin: AdminUser = Depends(require_superadmin),
+):
+    result = await session.execute(select(AdminUser).where(AdminUser.id == admin_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, "ادمین یافت نشد")
+    if target.role == "superadmin":
+        raise HTTPException(409, "ویرایش سوپرادمین مجاز نیست")
+
+    if body.full_name is not None:
+        target.full_name = body.full_name
+    if body.password:
+        target.password_hash = hash_password(body.password)
+    if body.role_preset is not None or body.permissions is not None:
+        preset = body.role_preset or target.role_preset or "custom"
+        if preset not in ROLE_PRESETS and preset != "custom":
+            preset = "custom"
+        perms = merge_permissions(preset, body.permissions or target.permissions)
+        perms["settings_admins"] = "none"
+        target.role_preset = preset
+        target.permissions = perms
+
+    await session.commit()
+    await log_action(
+        session,
+        superadmin.id,
+        "update_admin_permissions",
+        target_type="admin",
+        target_id=target.username,
+    )
+    return {"success": True, "admin": admin_to_dict(target)}
+
+
+@router.patch("/admins/{admin_id}/ban")
+async def ban_admin(
+    admin_id: int,
+    session: AsyncSession = Depends(get_db),
+    superadmin: AdminUser = Depends(require_superadmin),
+):
+    result = await session.execute(select(AdminUser).where(AdminUser.id == admin_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, "ادمین یافت نشد")
+    if target.id == superadmin.id:
+        raise HTTPException(409, "نمی‌توانید خودتان را مسدود کنید")
+    if target.role == "superadmin":
+        raise HTTPException(409, "مسدودسازی سوپرادمین مجاز نیست")
+
+    target.is_active = False
+    target.banned_at = datetime.utcnow()
+    target.banned_by_id = superadmin.id
+    await session.commit()
+    await log_action(session, superadmin.id, "ban_admin", target_type="admin", target_id=target.username)
+    return {"success": True}
+
+
+@router.patch("/admins/{admin_id}/unban")
+async def unban_admin(
+    admin_id: int,
+    session: AsyncSession = Depends(get_db),
+    superadmin: AdminUser = Depends(require_superadmin),
+):
+    result = await session.execute(select(AdminUser).where(AdminUser.id == admin_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, "ادمین یافت نشد")
+    if target.role == "superadmin":
+        raise HTTPException(409, "عملیات روی سوپرادمین مجاز نیست")
+
+    target.is_active = True
+    target.banned_at = None
+    target.banned_by_id = None
+    await session.commit()
+    await log_action(session, superadmin.id, "unban_admin", target_type="admin", target_id=target.username)
+    return {"success": True}
 
 
 @router.delete("/admins/{admin_id}")

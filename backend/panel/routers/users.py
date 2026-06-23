@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from panel.auth.dependencies import get_current_admin
+from panel.auth.dependencies import require_permission
 from panel.config import ensure_bot_path
 from panel.db.models import AdminUser, AuditLog
 from panel.db.session import get_db
@@ -36,7 +36,7 @@ async def list_users(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("users", "read")),
 ):
     ensure_bot_path()
     from app.db.models import User, VPNConfig
@@ -97,7 +97,7 @@ async def list_users(
 async def get_user(
     tg_id: int,
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("users", "read")),
 ):
     ensure_bot_path()
     from app.db.models import Referral, User, VPNConfig
@@ -172,7 +172,7 @@ async def user_audit_log(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=50),
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("users", "read")),
 ):
     tg_str = str(tg_id)
     q = (
@@ -205,7 +205,7 @@ async def adjust_balance(
     tg_id: int,
     body: AdjustBalanceBody,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("users", "write")),
 ):
     ensure_bot_path()
     from app.bot.services.wallet import credit
@@ -241,7 +241,7 @@ async def send_user_message(
     tg_id: int,
     body: MessageBody,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("users", "write")),
 ):
     ensure_bot_path()
     from app.db.models import User
@@ -269,7 +269,7 @@ async def add_balance(
     tg_id: int,
     body: AddBalanceBody,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("users", "write")),
 ):
     note = body.note or "شارژ توسط ادمین"
     return await adjust_balance(
@@ -284,7 +284,7 @@ async def add_balance(
 async def ban_user(
     tg_id: int,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("users", "write")),
 ):
     ensure_bot_path()
     from app.db.models import User
@@ -300,7 +300,7 @@ async def ban_user(
 async def unban_user(
     tg_id: int,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("users", "write")),
 ):
     ensure_bot_path()
     from app.db.models import User

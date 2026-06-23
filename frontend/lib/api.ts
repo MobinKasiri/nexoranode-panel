@@ -6,13 +6,16 @@ async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const isFormData = options.body instanceof FormData;
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
+    headers: isFormData
+      ? { ...(options.headers || {}) }
+      : {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -30,6 +33,8 @@ export const api = {
     request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PUT", body: body ? JSON.stringify(body) : undefined }),
+  patch: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 
   login: (username: string, password: string) =>
@@ -42,7 +47,8 @@ export const api = {
 
   logout: () => fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" }),
 
-  me: () => request<{ id: number; username: string; full_name: string; role: string }>("/auth/me"),
+  me: () =>
+    request<import("@/lib/permissions").AdminProfile>("/auth/me"),
 
   exportTransactions: (status?: string) => {
     const q = status ? `?status=${status}` : "";

@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from panel.auth.dependencies import get_current_admin
+from panel.auth.dependencies import require_permission
 from panel.config import ensure_bot_path
 from panel.db.models import AdminUser
 from panel.db.session import get_db
@@ -44,13 +44,17 @@ def _discount_status(code, now: datetime) -> str:
 
 @router.get("")
 async def list_discounts(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("discounts", "read")),
 ):
     ensure_bot_path()
     from app.db.models import DiscountCode
 
-    result = await session.execute(select(DiscountCode).order_by(DiscountCode.created_at.desc()))
+    q = select(DiscountCode).order_by(DiscountCode.created_at.desc())
+    total = (await session.execute(select(func.count()).select_from(q.subquery()))).scalar_one()
+    result = await session.execute(q.offset((page - 1) * limit).limit(limit))
     codes = result.scalars().all()
     now = datetime.utcnow()
     items = []
@@ -67,14 +71,14 @@ async def list_discounts(
             "status": _discount_status(c, now),
             "raw_active": c.is_active,
         })
-    return {"items": items}
+    return {"items": items, "total": total, "page": page, "limit": limit}
 
 
 @router.post("")
 async def create_discount(
     body: CreateDiscountBody,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("discounts", "write")),
 ):
     ensure_bot_path()
     from app.db.models import DiscountCode
@@ -112,7 +116,7 @@ async def patch_discount(
     code_id: int,
     body: PatchDiscountBody,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("discounts", "write")),
 ):
     ensure_bot_path()
     from app.db.models import DiscountCode
@@ -146,7 +150,7 @@ async def random_code(_admin: AdminUser = Depends(get_current_admin)):
 async def delete_discount(
     code_id: int,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("discounts", "write")),
 ):
     ensure_bot_path()
     from app.db.models import DiscountCode
@@ -171,7 +175,7 @@ async def discount_stats(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("discounts", "read")),
 ):
     ensure_bot_path()
     from app.db.models import DiscountCode, DiscountUsage, Transaction, User

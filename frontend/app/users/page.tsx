@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { Search, Users } from "lucide-react";
 import { AppShell } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -10,8 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChips } from "@/components/ui/filter-chips";
+import { TablePagination } from "@/components/ui/TablePagination";
 import { UserDrawer } from "@/components/users/UserDrawer";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useTableQuery } from "@/hooks/useTableQuery";
 import { api } from "@/lib/api";
 import { formatToman, toPersianDigits } from "@/lib/utils";
 import type { UserItem } from "@/types";
@@ -22,35 +24,39 @@ const USER_FILTERS = [
   { key: "banned", label: "مسدود" },
 ];
 
-export default function UsersPage() {
+function UsersContent() {
   const [items, setItems] = useState<UserItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search);
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const { page, limit, setPage, setLimit, setParams } = useTableQuery(["search", "filter"]);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("limit", String(limit));
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (filter) params.set("filter", filter);
     api
-      .get<{ items: UserItem[] }>(`/users?${params}`)
-      .then((d) => setItems(d.items))
+      .get<{ items: UserItem[]; total: number }>(`/users?${params}`)
+      .then((d) => {
+        setItems(d.items);
+        setTotal(d.total);
+      })
       .finally(() => setLoading(false));
-  };
+  }, [debouncedSearch, filter, page, limit]);
 
   useEffect(() => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (debouncedSearch) params.set("search", debouncedSearch);
-    if (filter) params.set("filter", filter);
-    api
-      .get<{ items: UserItem[] }>(`/users?${params}`)
-      .then((d) => setItems(d.items))
-      .finally(() => setLoading(false));
-  }, [debouncedSearch, filter]);
+    setParams({ search: debouncedSearch || null, filter: filter || null, page: 1 }, true);
+  }, [debouncedSearch, filter, setParams]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <AppShell>
@@ -74,45 +80,62 @@ export default function UsersPage() {
         ) : items.length === 0 ? (
           <EmptyState icon={Users} title="کاربری یافت نشد" description="فیلتر یا جستجو را تغییر دهید" />
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>آیدی</th>
-                <th>نام</th>
-                <th>موجودی</th>
-                <th>سرویس‌ها</th>
-                <th>خریدها</th>
-                <th>وضعیت</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((u) => (
-                <tr
-                  key={u.tg_id}
-                  className="cursor-pointer hover:bg-surface-hover"
-                  onClick={() => setSelectedId(u.tg_id)}
-                >
-                  <td className="font-latin">{toPersianDigits(u.tg_id)}</td>
-                  <td>
-                    <div className="font-medium">{u.full_name || "—"}</div>
-                    <div className="text-xs text-text-muted font-latin">@{u.username || "—"}</div>
-                  </td>
-                  <td>{formatToman(u.balance)}</td>
-                  <td>{toPersianDigits(u.active_configs)}</td>
-                  <td>{toPersianDigits(u.purchases)}</td>
-                  <td>
-                    <Badge status={u.is_banned ? "rejected" : "confirmed"}>
-                      {u.is_banned ? "مسدود" : "فعال"}
-                    </Badge>
-                  </td>
+          <>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>آیدی</th>
+                  <th>نام</th>
+                  <th>موجودی</th>
+                  <th>سرویس‌ها</th>
+                  <th>خریدها</th>
+                  <th>وضعیت</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((u) => (
+                  <tr
+                    key={u.tg_id}
+                    className="cursor-pointer hover:bg-surface-hover"
+                    onClick={() => setSelectedId(u.tg_id)}
+                  >
+                    <td className="font-latin">{toPersianDigits(u.tg_id)}</td>
+                    <td>
+                      <div className="font-medium">{u.full_name || "—"}</div>
+                      <div className="text-xs text-text-muted font-latin">@{u.username || "—"}</div>
+                    </td>
+                    <td>{formatToman(u.balance)}</td>
+                    <td>{toPersianDigits(u.active_configs)}</td>
+                    <td>{toPersianDigits(u.purchases)}</td>
+                    <td>
+                      <Badge status={u.is_banned ? "rejected" : "confirmed"}>
+                        {u.is_banned ? "مسدود" : "فعال"}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <TablePagination
+              page={page}
+              limit={limit}
+              total={total}
+              onPageChange={setPage}
+              onLimitChange={setLimit}
+            />
+          </>
         )}
       </Card>
 
       <UserDrawer tgId={selectedId} onClose={() => setSelectedId(null)} onUpdated={load} />
     </AppShell>
+  );
+}
+
+export default function UsersPage() {
+  return (
+    <Suspense fallback={<AppShell><Skeleton className="h-64" /></AppShell>}>
+      <UsersContent />
+    </Suspense>
   );
 }

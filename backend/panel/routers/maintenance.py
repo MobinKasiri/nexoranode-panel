@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from panel.auth.dependencies import get_current_admin
+from panel.auth.dependencies import require_permission
 from panel.db.models import AdminUser
 from panel.db.session import get_db
 from panel.services.audit import log_action
@@ -27,14 +27,14 @@ class EnableMaintenanceBody(BaseModel):
 
 
 @router.get("")
-async def get_maintenance(_admin: AdminUser = Depends(get_current_admin)):
+async def get_maintenance(_admin: AdminUser = Depends(require_permission("settings_maintenance", "read"))):
     return public_maintenance_state()
 
 
 @router.put("")
 async def update_maintenance(
     body: EnableMaintenanceBody,
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("settings_maintenance", "write")),
     session: AsyncSession = Depends(get_db),
 ):
     if body.enabled:
@@ -72,7 +72,7 @@ async def update_maintenance(
 
 
 @router.get("/presets")
-async def maintenance_presets(_admin: AdminUser = Depends(get_current_admin)):
+async def maintenance_presets(_admin: AdminUser = Depends(require_permission("settings_maintenance", "read"))):
     return {"items": [{"key": k, "label": _preset_label(k), "message": v} for k, v in MAINTENANCE_PRESETS.items()]}
 
 

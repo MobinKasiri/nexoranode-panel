@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from panel.auth.dependencies import get_current_admin
+from panel.auth.dependencies import require_permission
+from panel.auth.permissions import ACTION_LABELS
 from panel.config import ensure_bot_path
 from panel.db.models import AdminUser, AuditLog
 from panel.db.session import get_db
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 @router.get("/stats")
 async def dashboard_stats(
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("dashboard", "read")),
 ):
     ensure_bot_path()
     from app.db.models import Transaction, User, VPNConfig
@@ -69,7 +70,7 @@ async def dashboard_stats(
 async def revenue_chart(
     days: int = 30,
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("dashboard", "read")),
 ):
     ensure_bot_path()
     from app.db.models import Transaction, User
@@ -115,7 +116,7 @@ async def revenue_chart(
 async def recent_activity(
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("dashboard", "read")),
 ):
     ensure_bot_path()
     from app.db.models import Transaction, User
@@ -156,17 +157,7 @@ async def recent_activity(
     audit_result = await session.execute(
         select(AuditLog).order_by(AuditLog.created_at.desc()).limit(min(limit, 20))
     )
-    action_labels = {
-        "create_discount": "ایجاد کد تخفیف",
-        "delete_discount": "غیرفعال‌سازی تخفیف",
-        "maintenance_on": "فعال‌سازی حالت تعمیر",
-        "maintenance_off": "غیرفعال‌سازی حالت تعمیر",
-        "update_plans": "بروزرسانی پلن‌ها",
-        "create_admin": "ایجاد مدیر",
-        "remove_admin": "حذف مدیر",
-    }
-    for log in audit_result.scalars().all():
-        label = action_labels.get(log.action, log.action)
+from panel.auth.permissions import ACTION_LABELS
         events.append({
             "type": "audit",
             "text": f"{label} — {log.target_id or ''}",

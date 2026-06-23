@@ -31,6 +31,38 @@ class TelegramService:
             logger.exception("Failed to send Telegram message to %s", chat_id)
             return False
 
+    async def send_photo(
+        self,
+        chat_id: int,
+        photo_bytes: bytes,
+        caption: str = "",
+        *,
+        parse_mode: str = "HTML",
+        filename: str = "photo.jpg",
+    ) -> bool:
+        if not self.token:
+            logger.warning("BOT_TOKEN not set, skipping send_photo")
+            return False
+        url = f"{self.base}/sendPhoto"
+        form = aiohttp.FormData()
+        form.add_field("chat_id", str(chat_id))
+        if caption:
+            form.add_field("caption", caption)
+            form.add_field("parse_mode", parse_mode)
+        form.add_field(
+            "photo",
+            photo_bytes,
+            filename=filename,
+            content_type=_media_type_for_path(filename),
+        )
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, data=form) as resp:
+                    return resp.status == 200
+        except Exception:
+            logger.exception("Failed to send Telegram photo to %s", chat_id)
+            return False
+
     async def get_file_bytes(self, file_id: str) -> tuple[bytes, str] | None:
         if not self.token or not file_id:
             return None

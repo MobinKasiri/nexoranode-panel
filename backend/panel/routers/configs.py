@@ -5,14 +5,20 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from panel.auth.dependencies import get_current_admin
+from panel.auth.dependencies import require_permission
 from panel.config import ensure_bot_path
 from panel.db.models import AdminUser
 from panel.db.session import get_db
 from panel.services.config_ops import (
+    CreateConfigBody,
+    UpdateConfigBody,
+    create_config_admin,
     delete_config_background,
+    enrich_config,
+    list_inbounds,
     sync_all_configs,
     toggle_config,
+    update_config_admin,
 )
 
 router = APIRouter(prefix="/configs", tags=["configs"])
@@ -29,10 +35,10 @@ async def list_configs(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    _admin: AdminUser = Depends(require_permission("configs", "read")),
 ):
     ensure_bot_path()
-    from app.db.models import User, VPNConfig
+    from app.db.models import VPNConfig
 
     q = select(VPNConfig).order_by(VPNConfig.created_at.desc())
     if status == "active":
@@ -50,29 +56,44 @@ async def list_configs(
 
     items = []
     for c in configs:
-        user = await User.get(session, c.user_id)
-        items.append({
-            "id": c.id,
-            "service_name": c.service_name,
-            "user_id": c.user_id,
-            "username": user.username if user else None,
-            "full_name": user.full_name if user else None,
-            "plan_gb": c.plan_gb,
-            "plan_days": c.plan_days,
-            "traffic_used_bytes": c.traffic_used_bytes,
-            "traffic_limit_bytes": c.traffic_limit_bytes,
-            "expiry_date": c.expiry_date.isoformat() if c.expiry_date else None,
-            "is_active": c.is_active,
-            "subscription_url": c.subscription_url,
-        })
+        items.append(await enrich_config(session, c))
     return {"items": items, "total": total, "page": page, "limit": limit}
+
+
+@router.get("/inbounds")
+async def get_inbounds(
+    _admin: AdminUser = Depends(require_permission("configs", "read")),
+):
+    try:
+        return {"items": await list_inbounds()}
+    except Exception as exc:
+        raise HTTPException(503, "خطا در دریافت inboundها از پنل") from exc
+
+
+@router.post("")
+async def create_config(
+    body: CreateConfigBody,
+    session: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(require_permission("configs", "write")),
+):
+    return await create_config_admin(session, admin.id, body)
+
+
+@router.patch("/{config_id}")
+async def update_config(
+    config_id: int,
+    body: UpdateConfigBody,
+    session: AsyncSession = Depends(get_db),
+    admin: AdminUser = Depends(require_permission("configs", "write")),
+):
+    return await update_config_admin(session, admin.id, config_id, body)
 
 
 @router.post("/{config_id}/toggle")
 async def toggle_config_endpoint(
     config_id: int,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("configs", "write")),
 ):
     return await toggle_config(session, config_id, admin.id)
 
@@ -82,7 +103,7 @@ async def delete_config_endpoint(
     config_id: int,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("configs", "write")),
 ):
     ensure_bot_path()
     from app.db.models import VPNConfig
@@ -98,6 +119,6 @@ async def delete_config_endpoint(
 @router.post("/sync-all")
 async def sync_all_endpoint(
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(require_permission("configs", "write")),
 ):
     return await sync_all_configs(session, admin.id)
