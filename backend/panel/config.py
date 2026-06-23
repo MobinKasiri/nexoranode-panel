@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     INITIAL_ADMIN_USERNAME: str = "admin"
     INITIAL_ADMIN_PASSWORD: str = ""
-    INITIAL_ADMIN_FULLNAME: str = "مدیر نکسورانود"
+    INITIAL_ADMIN_FULLNAME: str = "مدیر"
 
     XUI_HOST: str = "https://p.nexoranode.xyz:2087"
     XUI_PATH: str = "/CC6AiFGmYY4ZWVRf08"
