@@ -157,7 +157,8 @@ async def recent_activity(
     audit_result = await session.execute(
         select(AuditLog).order_by(AuditLog.created_at.desc()).limit(min(limit, 20))
     )
-from panel.auth.permissions import ACTION_LABELS
+    for log in audit_result.scalars().all():
+        label = ACTION_LABELS.get(log.action, log.action)
         events.append({
             "type": "audit",
             "text": f"{label} — {log.target_id or ''}",
