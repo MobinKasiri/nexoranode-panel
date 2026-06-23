@@ -176,6 +176,7 @@ export default function BroadcastPage() {
           )}
         </div>
         {photoPreview && (
+          // eslint-disable-next-line @next/next/no-img-element -- local blob preview URL
           <img src={photoPreview} alt="preview" className="max-h-40 rounded-lg mb-4 border border-border" />
         )}
 

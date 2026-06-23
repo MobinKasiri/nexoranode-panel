@@ -77,7 +77,7 @@ function filterGroups(admin: ReturnType<typeof useAuth>["admin"]) {
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { admin, loading } = useAuth();
+  const { admin } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [activityCount, setActivityCount] = useState(0);

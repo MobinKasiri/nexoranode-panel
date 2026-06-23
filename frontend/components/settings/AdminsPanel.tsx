@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,7 @@ export function AdminsPanel() {
 
   const selected = admins.find((a) => a.id === selectedId) || null;
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     Promise.all([
       api.get<{ items: AdminRow[] }>("/settings/admins"),
@@ -57,18 +57,20 @@ export function AdminsPanel() {
       .then(([a, m]) => {
         setAdmins(a.items);
         setMeta(m);
-        if (!selectedId && a.items.length) {
+        setSelectedId((prev) => {
+          if (prev) return prev;
+          if (!a.items.length) return null;
           const first = a.items.find((x) => x.role !== "superadmin") || a.items[0];
-          setSelectedId(first.id);
-        }
+          return first.id;
+        });
       })
       .catch((e) => toast.error(e instanceof Error ? e.message : "خطا"))
       .finally(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     if (!selected || selected.role === "superadmin") return;
