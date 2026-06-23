@@ -17,6 +17,7 @@ import { FilterChips } from "@/components/ui/filter-chips";
 import { CopyableValue } from "@/components/ui/CopyableValue";
 import { TablePagination } from "@/components/ui/TablePagination";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useFilterPageReset } from "@/hooks/useFilterPageReset";
 import { useTableQuery } from "@/hooks/useTableQuery";
 import { api } from "@/lib/api";
 import { ReceiptImage } from "@/components/transactions/ReceiptImage";
@@ -74,9 +75,7 @@ function TransactionsContent() {
     }
   }, [status, debouncedSearch, queryString]);
 
-  useEffect(() => {
-    setParams({ status: status || null, search: debouncedSearch || null, page: 1 }, true);
-  }, [status, debouncedSearch, setParams]);
+  useFilterPageReset({ status, search: debouncedSearch }, setParams);
 
   useEffect(() => { load(); }, [load]);
 

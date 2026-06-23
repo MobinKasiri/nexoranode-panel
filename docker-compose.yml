@@ -4,6 +4,8 @@ services:
     container_name: nexoranode-panel-api
     ports:
       - "127.0.0.1:8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: .env
     environment:
       PLANS_FILE: /data/plans/plans.json

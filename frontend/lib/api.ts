@@ -2,6 +2,22 @@ const API_BASE = typeof window !== "undefined"
   ? "/api"
   : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000");
 
+function formatApiError(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object" && "msg" in item) {
+          return String((item as { msg: string }).msg);
+        }
+        return JSON.stringify(item);
+      })
+      .join(" — ");
+  }
+  return fallback;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
@@ -19,7 +35,7 @@ async function request<T>(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || "Request failed");
+    throw new Error(formatApiError(err.detail, res.statusText || "Request failed"));
   }
   if (res.headers.get("content-type")?.includes("application/json")) {
     return res.json();
@@ -60,7 +76,7 @@ export const api = {
     const res = await fetch(`${API_BASE}${path}`, { credentials: "include" });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || "Request failed");
+      throw new Error(formatApiError(err.detail, res.statusText || "Request failed"));
     }
     return res.blob();
   },

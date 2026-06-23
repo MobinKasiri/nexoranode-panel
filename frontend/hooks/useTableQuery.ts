@@ -25,18 +25,15 @@ export function useTableQuery(extraKeys: string[] = []) {
   }, [searchParams, extraKeys]);
 
   const queryString = useMemo(() => {
-    const params = new URLSearchParams();
-    params.set("page", String(page));
-    params.set("limit", String(limit));
-    for (const [k, v] of Object.entries(extras)) {
-      if (v) params.set(k, v);
-    }
+    const params = new URLSearchParams(searchParams.toString());
+    if (!params.get("page")) params.set("page", String(page));
+    if (!params.get("limit")) params.set("limit", String(limit));
     return params.toString();
-  }, [page, limit, extras]);
+  }, [searchParams, page, limit]);
 
   const setParams = useCallback(
-    (updates: Record<string, string | number | null | undefined>, replace = false) => {
-      const params = new URLSearchParams(replace ? undefined : searchParams.toString());
+    (updates: Record<string, string | number | null | undefined>) => {
+      const params = new URLSearchParams(searchParams.toString());
       for (const [key, val] of Object.entries(updates)) {
         if (val === null || val === undefined || val === "") {
           params.delete(key);
@@ -44,9 +41,11 @@ export function useTableQuery(extraKeys: string[] = []) {
           params.set(key, String(val));
         }
       }
-      router.push(`${pathname}?${params.toString()}`);
+      if (!params.has("limit")) params.set("limit", String(limit));
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
     },
-    [pathname, router, searchParams]
+    [pathname, router, searchParams, limit]
   );
 
   const setPage = useCallback(

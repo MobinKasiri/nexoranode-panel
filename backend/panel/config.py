@@ -161,6 +161,62 @@ def resolve_bot_token(settings: Settings | None = None) -> str:
     return (bot_env.get("BOT_TOKEN") or "").strip()
 
 
+def _env_pick(settings: Settings, bot_env: dict[str, str], key: str, panel_val: str | None) -> str:
+    val = (panel_val or "").strip()
+    if val:
+        return val
+    return (bot_env.get(key) or "").strip()
+
+
+def _normalize_xui_host(host: str) -> str:
+    """Panel runs in Docker; bot .env may use 127.0.0.1 for co-located x-ui."""
+    from urllib.parse import urlparse, urlunparse
+
+    raw = (host or "").strip()
+    if not raw:
+        return raw
+    parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+    if parsed.hostname in ("127.0.0.1", "localhost"):
+        netloc = parsed.netloc.replace(parsed.hostname, "host.docker.internal", 1)
+        return urlunparse(parsed._replace(netloc=netloc))
+    return raw
+
+
+def resolve_xui_settings(settings: Settings | None = None) -> dict:
+    """Panel .env first, then bot /bot/.env (same as Telegram token fallback)."""
+    settings = settings or get_settings()
+    bot_env = _parse_env_file(Path(settings.BOT_ROOT) / ".env")
+    token = _env_pick(settings, bot_env, "XUI_TOKEN", settings.XUI_TOKEN)
+    inbound_filter = _env_pick(settings, bot_env, "XUI_INBOUND_FILTER", settings.XUI_INBOUND_FILTER)
+    start_raw = _env_pick(settings, bot_env, "XUI_START_AFTER_FIRST_USE", "")
+    if start_raw:
+        start_after = start_raw.lower() in ("1", "true", "yes", "on")
+    else:
+        start_after = settings.XUI_START_AFTER_FIRST_USE
+    days_raw = _env_pick(settings, bot_env, "XUI_DEFAULT_DURATION_DAYS", "")
+    default_days = int(days_raw) if days_raw.isdigit() else settings.XUI_DEFAULT_DURATION_DAYS
+    return {
+        "HOST": _normalize_xui_host(
+            _env_pick(settings, bot_env, "XUI_HOST", settings.XUI_HOST) or settings.XUI_HOST
+        ),
+        "PATH": _env_pick(settings, bot_env, "XUI_PATH", settings.XUI_PATH) or settings.XUI_PATH,
+        "USERNAME": _env_pick(settings, bot_env, "XUI_USERNAME", settings.XUI_USERNAME),
+        "PASSWORD": _env_pick(settings, bot_env, "XUI_PASSWORD", settings.XUI_PASSWORD),
+        "TOKEN": token or None,
+        "SUB_BASE_URL": _env_pick(settings, bot_env, "XUI_SUB_BASE_URL", settings.XUI_SUB_BASE_URL)
+        or settings.XUI_SUB_BASE_URL,
+        "INBOUND_FILTER": tuple(
+            p.strip() for p in inbound_filter.split(",") if p.strip()
+        ),
+        "START_AFTER_FIRST_USE": start_after,
+        "DEFAULT_DURATION_DAYS": default_days,
+        "NODE_SYNC_ENABLED": settings.NODE_SYNC_ENABLED,
+        "NODE_SSH_USER": settings.NODE_SSH_USER,
+        "NODE_SSH_PORT": settings.NODE_SSH_PORT,
+        "NODE_SSH_IDENTITY": settings.NODE_SSH_IDENTITY,
+    }
+
+
 def _read_plans_file(path: Path) -> dict | None:
     if not path.is_file():
         return None
@@ -208,6 +264,14 @@ def _mirror_plans_data(data: dict, target: Path) -> bool:
         return False
 
 
+def _plans_content_matches(a: Path, b: Path) -> bool:
+    """Same JSON via shared host bind mount (panel rw path, bot ro path)."""
+    try:
+        return a.is_file() and b.is_file() and a.read_bytes() == b.read_bytes()
+    except OSError:
+        return False
+
+
 def mirror_plans_to_bot(settings: Settings | None = None, data: dict | None = None) -> dict:
     """After panel save, ensure bot-side paths have the same JSON."""
     settings = settings or get_settings()
@@ -215,7 +279,30 @@ def mirror_plans_to_bot(settings: Settings | None = None, data: dict | None = No
     payload = data if data is not None else (_read_plans_file(canonical) or {})
 
     if not payload:
-        return {"mirrored": [], "skipped": [], "canonical": str(canonical)}
+        return {"mirrored": [], "skipped": [], "canonical": str(canonical), "in_sync": True}
+
+    shared_dir = resolve_shared_data_dir(settings)
+    try:
+        canonical_resolved = canonical.resolve()
+        shared_plans = (shared_dir / "plans.json").resolve()
+        if canonical_resolved == shared_plans:
+            # Bot container reads PLANS_FILE=/app/data/plans.json on the same host mount.
+            return {
+                "canonical": str(canonical),
+                "mirrored": [str(canonical)],
+                "skipped": [],
+                "in_sync": True,
+                "shared_mount": True,
+            }
+    except OSError:
+        if str(canonical).endswith("/data/plans/plans.json"):
+            return {
+                "canonical": str(canonical),
+                "mirrored": [str(canonical)],
+                "skipped": [],
+                "in_sync": True,
+                "shared_mount": True,
+            }
 
     mirrored: list[str] = []
     skipped: list[str] = []
@@ -227,6 +314,9 @@ def mirror_plans_to_bot(settings: Settings | None = None, data: dict | None = No
         if _mirror_plans_data(payload, bot_p):
             mirrored.append(str(bot_p))
             logger.info("Mirrored plans to bot path %s", bot_p)
+        elif _plans_content_matches(canonical, bot_p):
+            mirrored.append(str(bot_p))
+            logger.info("Bot plans already match canonical via shared mount: %s", bot_p)
         else:
             skipped.append(str(bot_p))
 
@@ -234,7 +324,7 @@ def mirror_plans_to_bot(settings: Settings | None = None, data: dict | None = No
         "canonical": str(canonical),
         "mirrored": mirrored,
         "skipped": skipped,
-        "in_sync": len(skipped) == 0 or all(_same_path(Path(p), canonical) for p in mirrored),
+        "in_sync": len(skipped) == 0,
     }
 
 

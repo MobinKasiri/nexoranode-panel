@@ -128,15 +128,34 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite }: C
     }
     setSaving(true);
     try {
-      const body = {
-        ...form,
-        expiry_date: form.start_after_first_use ? null : form.expiry_date || null,
-      };
       if (isEdit && config) {
-        await api.patch(`/configs/${config.id}`, body);
+        await api.patch(`/configs/${config.id}`, {
+          plan_gb: form.plan_gb,
+          plan_days: form.plan_days,
+          inbound_ids: form.inbound_ids,
+          limit_ip: form.limit_ip,
+          enable: form.enable,
+          start_after_first_use: form.start_after_first_use,
+          expiry_date: form.start_after_first_use ? null : form.expiry_date || null,
+          comment: form.comment,
+          sub_id: form.sub_id,
+        });
         toast.success("ذخیره شد");
       } else {
-        await api.post("/configs", body);
+        await api.post("/configs", {
+          user_id: form.user_id,
+          service_name: form.service_name,
+          plan_gb: form.plan_gb,
+          plan_days: form.plan_days,
+          inbound_ids: form.inbound_ids,
+          limit_ip: form.limit_ip,
+          enable: form.enable,
+          start_after_first_use: form.start_after_first_use,
+          expiry_date: form.start_after_first_use ? null : form.expiry_date || null,
+          comment: form.comment,
+          uuid: form.uuid,
+          sub_id: form.sub_id,
+        });
         toast.success("سرویس ایجاد شد");
       }
       onSaved();

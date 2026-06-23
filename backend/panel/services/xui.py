@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
-import os
 
-from panel.config import ensure_bot_path, get_settings
+from fastapi import HTTPException
+
+from panel.config import ensure_bot_path, resolve_xui_settings
 
 logger = logging.getLogger(__name__)
 
@@ -12,35 +13,36 @@ _inbound_ids: list[int] | None = None
 _vpn_service = None
 
 
-def _parse_inbound_filter() -> tuple[str, ...]:
-    raw = os.environ.get("XUI_INBOUND_FILTER", "").strip()
-    if not raw:
-        return ()
-    return tuple(part.strip() for part in raw.split(",") if part.strip())
+def reset_xui_cache() -> None:
+    global _xui_service, _inbound_ids, _vpn_service
+    _xui_service = None
+    _inbound_ids = None
+    _vpn_service = None
 
 
 def _xui_config():
     ensure_bot_path()
     from app.config import XUIConfig
 
-    settings = get_settings()
+    resolved = resolve_xui_settings()
     return XUIConfig(
-        HOST=settings.XUI_HOST,
-        PATH=settings.XUI_PATH,
-        USERNAME=settings.XUI_USERNAME,
-        PASSWORD=settings.XUI_PASSWORD,
-        TOKEN=settings.XUI_TOKEN,
-        SUB_BASE_URL=settings.XUI_SUB_BASE_URL,
-        INBOUND_FILTER=_parse_inbound_filter(),
-        START_AFTER_FIRST_USE=settings.XUI_START_AFTER_FIRST_USE,
-        DEFAULT_DURATION_DAYS=settings.XUI_DEFAULT_DURATION_DAYS,
+        HOST=resolved["HOST"],
+        PATH=resolved["PATH"],
+        USERNAME=resolved["USERNAME"],
+        PASSWORD=resolved["PASSWORD"],
+        TOKEN=resolved["TOKEN"],
+        SUB_BASE_URL=resolved["SUB_BASE_URL"],
+        INBOUND_FILTER=resolved["INBOUND_FILTER"],
+        START_AFTER_FIRST_USE=resolved["START_AFTER_FIRST_USE"],
+        DEFAULT_DURATION_DAYS=resolved["DEFAULT_DURATION_DAYS"],
     )
 
 
 async def _refresh_inbound_ids() -> list[int]:
     global _inbound_ids
     xui = await get_xui_service()
-    _inbound_ids = await xui.enabled_inbound_ids(filter_names=_parse_inbound_filter())
+    resolved = resolve_xui_settings()
+    _inbound_ids = await xui.enabled_inbound_ids(filter_names=resolved["INBOUND_FILTER"])
     return _inbound_ids
 
 
@@ -53,12 +55,44 @@ async def get_xui_service():
         return _xui_service
 
     config = _xui_config()
-    _xui_service = XUIApiService(config)
-    if config.TOKEN:
-        _xui_service._logged_in = True
-    else:
-        await _xui_service.login()
-    return _xui_service
+    if not config.USERNAME and not config.PASSWORD and not config.TOKEN:
+        raise RuntimeError(
+            "XUI credentials missing — set XUI_USERNAME/XUI_PASSWORD or XUI_TOKEN "
+            "in panel .env or bot /bot/.env"
+        )
+
+    try:
+        _xui_service = XUIApiService(config)
+        if config.TOKEN:
+            _xui_service._logged_in = True
+        else:
+            await _xui_service.login()
+        return _xui_service
+    except Exception:
+        reset_xui_cache()
+        raise
+
+
+async def require_xui_service():
+    try:
+        return await get_xui_service()
+    except Exception as exc:
+        logger.exception("XUI service unavailable")
+        detail = "اتصال به پنل VPN برقرار نیست"
+        msg = str(exc).lower()
+        if "credentials missing" in msg or "xui_username" in msg:
+            detail = (
+                "اطلاعات ورود پنل VPN تنظیم نشده — "
+                "XUI_USERNAME و XUI_PASSWORD را در .env ربات یا پنل قرار دهید"
+            )
+        elif "no enabled inbounds" in msg:
+            detail = "هیچ inbound فعالی در پنل VPN یافت نشد"
+        elif "connect" in msg or "network" in msg or "ssl" in msg:
+            detail = (
+                "پنل VPN از داخل Docker در دسترس نیست — "
+                "XUI_HOST را بررسی کنید (از 127.0.0.1 به host.docker.internal یا URL عمومی)"
+            )
+        raise HTTPException(503, detail) from exc
 
 
 async def get_vpn_service():
@@ -69,23 +103,23 @@ async def get_vpn_service():
     if _vpn_service is not None:
         return _vpn_service
 
-    settings = get_settings()
-    xui = await get_xui_service()
+    resolved = resolve_xui_settings()
+    xui = await require_xui_service()
     if _inbound_ids is None:
-        _inbound_ids = await xui.enabled_inbound_ids(filter_names=_parse_inbound_filter())
+        _inbound_ids = await xui.enabled_inbound_ids(filter_names=resolved["INBOUND_FILTER"])
         logger.info("Panel VPN bootstrap — inbound ids=%s", _inbound_ids)
 
     _vpn_service = VPNService(
         xui,
         _inbound_ids,
-        settings.XUI_SUB_BASE_URL,
-        start_after_first_use=settings.XUI_START_AFTER_FIRST_USE,
-        default_duration_days=settings.XUI_DEFAULT_DURATION_DAYS,
+        resolved["SUB_BASE_URL"],
+        start_after_first_use=resolved["START_AFTER_FIRST_USE"],
+        default_duration_days=resolved["DEFAULT_DURATION_DAYS"],
         refresh_inbound_ids=_refresh_inbound_ids,
-        node_sync_enabled=settings.NODE_SYNC_ENABLED,
-        node_ssh_user=settings.NODE_SSH_USER,
-        node_ssh_port=settings.NODE_SSH_PORT,
-        node_ssh_identity=settings.NODE_SSH_IDENTITY,
+        node_sync_enabled=resolved["NODE_SYNC_ENABLED"],
+        node_ssh_user=resolved["NODE_SSH_USER"],
+        node_ssh_port=resolved["NODE_SSH_PORT"],
+        node_ssh_identity=resolved["NODE_SSH_IDENTITY"],
     )
     return _vpn_service
 
@@ -125,3 +159,30 @@ async def get_server_health() -> dict:
             "active_connections": 0,
             "error": str(e),
         }
+
+
+async def xui_connection_status() -> dict:
+    """Diagnostics for Settings / config ops (no secrets)."""
+    resolved = resolve_xui_settings()
+    has_creds = bool(resolved["USERNAME"] and resolved["PASSWORD"]) or bool(resolved["TOKEN"])
+    out = {
+        "host": resolved["HOST"],
+        "path_set": bool(resolved["PATH"]),
+        "has_credentials": has_creds,
+        "connected": False,
+        "inbound_count": 0,
+        "error": None,
+    }
+    if not has_creds:
+        out["error"] = "missing_credentials"
+        return out
+    try:
+        xui = await get_xui_service()
+        inbounds = await xui.list_inbounds()
+        enabled = [ib for ib in inbounds if ib.enable]
+        out["connected"] = True
+        out["inbound_count"] = len(enabled)
+    except Exception as exc:
+        out["error"] = str(exc)
+        reset_xui_cache()
+    return out

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from panel.config import ensure_bot_path
 from panel.db.session import async_session
 from panel.services.audit import log_action
-from panel.services.xui import get_vpn_service, get_xui_service
+from panel.services.xui import get_vpn_service, get_xui_service, require_xui_service
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,8 @@ def _xui_http_error(exc: Exception) -> HTTPException:
 async def require_vpn_service():
     try:
         return await get_vpn_service()
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("VPN service unavailable")
         raise HTTPException(503, "اتصال به پنل VPN برقرار نیست") from exc
@@ -141,7 +143,7 @@ async def sync_all_configs(session: AsyncSession, admin_id: int) -> dict[str, An
 
 
 async def list_inbounds() -> list[dict[str, Any]]:
-    xui = await get_xui_service()
+    xui = await require_xui_service()
     inbounds = await xui.list_inbounds()
     return [
         {

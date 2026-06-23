@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
@@ -20,6 +22,8 @@ from panel.services.config_ops import (
     toggle_config,
     update_config_admin,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/configs", tags=["configs"])
 
@@ -64,10 +68,7 @@ async def list_configs(
 async def get_inbounds(
     _admin: AdminUser = Depends(require_permission("configs", "read")),
 ):
-    try:
-        return {"items": await list_inbounds()}
-    except Exception as exc:
-        raise HTTPException(503, "خطا در دریافت inboundها از پنل") from exc
+    return {"items": await list_inbounds()}
 
 
 @router.post("")
@@ -76,7 +77,13 @@ async def create_config(
     session: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(require_permission("configs", "write")),
 ):
-    return await create_config_admin(session, admin.id, body)
+    try:
+        return await create_config_admin(session, admin.id, body)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("create_config failed")
+        raise HTTPException(500, f"خطا در ایجاد سرویس: {exc}") from exc
 
 
 @router.patch("/{config_id}")

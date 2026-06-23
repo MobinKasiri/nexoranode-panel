@@ -13,6 +13,7 @@ import { FilterChips } from "@/components/ui/filter-chips";
 import { TablePagination } from "@/components/ui/TablePagination";
 import { UserDrawer } from "@/components/users/UserDrawer";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useFilterPageReset } from "@/hooks/useFilterPageReset";
 import { useTableQuery } from "@/hooks/useTableQuery";
 import { api } from "@/lib/api";
 import { formatToman, toPersianDigits } from "@/lib/utils";
@@ -34,6 +35,11 @@ function UsersContent() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const { page, limit, setPage, setLimit, setParams } = useTableQuery(["search", "filter"]);
 
+  useFilterPageReset(
+    { search: debouncedSearch, filter },
+    setParams
+  );
+
   const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -49,10 +55,6 @@ function UsersContent() {
       })
       .finally(() => setLoading(false));
   }, [debouncedSearch, filter, page, limit]);
-
-  useEffect(() => {
-    setParams({ search: debouncedSearch || null, filter: filter || null, page: 1 }, true);
-  }, [debouncedSearch, filter, setParams]);
 
   useEffect(() => {
     load();

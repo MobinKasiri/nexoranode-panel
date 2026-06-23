@@ -29,11 +29,11 @@ type AdminOption = { id: number; username: string; full_name: string };
 
 function ActivityContent() {
   const { admin } = useAuth();
-  const { page, limit, queryString, setPage, setLimit } = useTableQuery(["admin_id"]);
+  const { page, limit, queryString, setPage, setLimit, setParams, extras } = useTableQuery(["admin_id"]);
+  const adminFilter = extras.admin_id || "";
   const [items, setItems] = useState<ActivityRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [adminFilter, setAdminFilter] = useState("");
   const [adminOptions, setAdminOptions] = useState<AdminOption[]>([]);
 
   useEffect(() => {
@@ -45,15 +45,13 @@ function ActivityContent() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams(queryString);
-      if (adminFilter) params.set("admin_id", adminFilter);
-      const data = await api.get<{ items: ActivityRow[]; total: number }>(`/activity?${params}`);
+      const data = await api.get<{ items: ActivityRow[]; total: number }>(`/activity?${queryString}`);
       setItems(data.items);
       setTotal(data.total);
     } finally {
       setLoading(false);
     }
-  }, [queryString, adminFilter]);
+  }, [queryString]);
 
   useEffect(() => {
     load();
@@ -69,7 +67,7 @@ function ActivityContent() {
           <select
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
             value={adminFilter}
-            onChange={(e) => setAdminFilter(e.target.value)}
+            onChange={(e) => setParams({ admin_id: e.target.value || null, page: 1 })}
           >
             <option value="">همه مدیران</option>
             {adminOptions.map((a) => (
