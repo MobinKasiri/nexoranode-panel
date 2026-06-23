@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ExpiryDateField } from "@/components/discounts/ExpiryDateField";
 import { TablePagination } from "@/components/ui/TablePagination";
 import { useTableQuery } from "@/hooks/useTableQuery";
+import { api } from "@/lib/api";
 import { cn, discountStatusLabel, formatDate, formatToman, toPersianDigits } from "@/lib/utils";
 
 interface DiscountItem {
