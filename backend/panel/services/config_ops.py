@@ -306,7 +306,11 @@ async def create_config_admin(
         resolved_uuid = await xui.resolve_client_uuid(email, hint=vless_uuid)
         if not resolved_uuid:
             raise HTTPException(502, "پنل UUID برنگرداند")
-        await xui.ensure_client_on_inbounds(email, resolved_uuid, inbound_ids)
+        await xui.ensure_client_on_inbounds(
+            email, resolved_uuid, inbound_ids, enable=body.enable
+        )
+        if not body.enable:
+            await xui.set_client_enabled(email, False)
     except HTTPException:
         raise
     except Exception as exc:
@@ -396,9 +400,10 @@ async def update_config_admin(
             config.panel_email,
             total_bytes=total_bytes,
             expiry_ms=expiry_ms,
+            flow=record.get("flow") or "",
             limit_ip=limit_ip,
             enable=enable,
-            tg_id=config.user_id,
+            tg_id=int(record.get("tgId") or config.user_id),
             sub_id=sub_id,
             comment=comment,
         )
@@ -411,6 +416,21 @@ async def update_config_admin(
                 await xui.attach_client(config.panel_email, to_attach)
             if to_detach:
                 await xui.detach_client(config.panel_email, to_detach)
+        from app.bot.services.xui_api import extract_vless_uuid
+
+        resolved_uuid = extract_vless_uuid(record) or (config.panel_uuid or "")
+        final_inbound_ids = (
+            list(body.inbound_ids)
+            if body.inbound_ids is not None
+            else [int(x) for x in (record.get("inboundIds") or []) if x is not None]
+        )
+        if resolved_uuid and final_inbound_ids:
+            await xui.finalize_client_on_inbounds(
+                config.panel_email,
+                resolved_uuid,
+                final_inbound_ids,
+                enable=enable,
+            )
     except Exception as exc:
         raise _xui_http_error(exc) from exc
 
