@@ -197,6 +197,16 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite, can
       onOpenChange={onOpenChange}
       title={isEdit ? "ویرایش سرویس" : "افزودن سرویس"}
       className="max-w-2xl"
+      footer={
+        <div className="flex gap-2">
+          <Button onClick={save} disabled={saving || !allowSave}>
+            {saving ? "در حال ذخیره…" : isEdit ? "ذخیره" : "ایجاد"}
+          </Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            انصراف
+          </Button>
+        </div>
+      }
     >
       <div className="flex gap-2 mb-4">
         {(["basics", "credentials"] as const).map((t) => (
@@ -402,15 +412,6 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite, can
           />
         </div>
       )}
-
-      <div className="flex gap-2 mt-6">
-        <Button onClick={save} disabled={saving || !allowSave}>
-          {saving ? "در حال ذخیره…" : isEdit ? "ذخیره" : "ایجاد"}
-        </Button>
-        <Button variant="outline" onClick={() => onOpenChange(false)}>
-          انصراف
-        </Button>
-      </div>
     </Modal>
   );
 }
