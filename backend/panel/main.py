@@ -152,6 +152,7 @@ def create_app() -> FastAPI:
             async with engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             bot_ok = True
+            bot_detail: str | None = None
             try:
                 ensure_bot_path()
                 from app.db.models import User
@@ -160,10 +161,18 @@ def create_app() -> FastAPI:
                     await User.count(session)
             except Exception as exc:
                 bot_ok = False
+                bot_detail = f"{type(exc).__name__}: {exc}"
                 logger.warning("Health bot schema check failed: %s", exc)
             if bot_ok:
                 return {"status": "ok", "db": "ok", "bot_schema": "ok"}
-            return {"status": "degraded", "db": "ok", "bot_schema": "error"}
+            payload: dict[str, str] = {
+                "status": "degraded",
+                "db": "ok",
+                "bot_schema": "error",
+            }
+            if bot_detail:
+                payload["bot_schema_detail"] = bot_detail
+            return payload
         except Exception as exc:
             logger.warning("Health DB check failed: %s", exc)
             return {"status": "degraded", "db": "error"}

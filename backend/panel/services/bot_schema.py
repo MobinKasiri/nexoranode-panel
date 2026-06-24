@@ -20,14 +20,25 @@ _COLUMN_PATCHES: tuple[tuple[str, str, str], ...] = (
 )
 
 
-def _run_alembic_upgrade() -> None:
+def _resolve_bot_app_root() -> Path | None:
     settings = get_settings()
     bot_root = Path(settings.BOT_ROOT)
-    ini_path = bot_root / "app" / "db" / "alembic.ini"
-    if not ini_path.is_file():
-        logger.warning("Bot alembic.ini missing at %s", ini_path)
+    nested = bot_root / "app"
+    if (nested / "db" / "alembic.ini").is_file():
+        return nested
+    if (bot_root / "db" / "alembic.ini").is_file():
+        return bot_root
+    return None
+
+
+def _run_alembic_upgrade() -> None:
+    settings = get_settings()
+    app_root = _resolve_bot_app_root()
+    if app_root is None:
+        logger.warning("Bot alembic.ini not found under %s", settings.BOT_ROOT)
         return
 
+    ini_path = app_root / "db" / "alembic.ini"
     ensure_bot_path()
     os.environ["DATABASE_URL"] = settings.DATABASE_URL
 
@@ -37,7 +48,7 @@ def _run_alembic_upgrade() -> None:
     cfg = Config(str(ini_path))
     prev_cwd = os.getcwd()
     try:
-        os.chdir(bot_root)
+        os.chdir(app_root)
         command.upgrade(cfg, "head")
         logger.info("Bot database schema upgraded via alembic (head)")
     finally:
