@@ -174,9 +174,13 @@ async def update_referral_settings(
     payload = {
         "referrer_bonus_toman": body.referrer_bonus_toman,
         "friend_welcome": fw,
-        "texts": body.texts,
+        "texts": dict(body.texts),
         "images": body.images or {},
     }
+    if payload["texts"].get("share_dialog"):
+        from app.bot.utils.emoji import plain_share_text
+
+        payload["texts"]["share_dialog"] = plain_share_text(payload["texts"]["share_dialog"])
     path = save_referral_settings(payload, resolve_shared_data_dir())
     await log_action(session, admin.id, "update_referral_settings", target_type="settings", target_id=str(path))
     return {"success": True, "path": str(path)}

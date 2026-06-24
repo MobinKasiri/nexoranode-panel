@@ -40,7 +40,7 @@ const TEXT_FIELDS: { key: string; label: string; hint: string }[] = [
    {
       key: "share_dialog",
       label: "متن اشتراک‌گذاری لینک",
-      hint: "در پنجره Share تلگرام نمایش داده می‌شود",
+      hint: "فقط متن ساده (بدون HTML) — در پنجره Share تلگرام نمایش داده می‌شود",
    },
    {
       key: "friend_welcome",
