@@ -13,6 +13,12 @@ logger = logging.getLogger(__name__)
 
 MAINTENANCE_FILENAME = "maintenance.json"
 
+DEFAULT_REPAIR_MESSAGE = (
+    "⏳ <b>ربات موقتاً در دسترس نیست</b>\n\n"
+    "در حال بروزرسانی یا راه‌اندازی مجدد هستیم. لطفاً چند دقیقه دیگر دوباره "
+    "<b>/start</b> را بزنید."
+)
+
 MAINTENANCE_PRESETS: dict[str, str] = {
     "developing": (
         "🔧 <b>ربات در حال توسعه است</b>\n\n"
@@ -123,11 +129,15 @@ def build_user_message(state: dict[str, Any]) -> str:
 def public_maintenance_state() -> dict[str, Any]:
     state = load_maintenance()
     remaining = remaining_persian(state.get("ends_at"))
+    enabled = bool(state.get("enabled"))
+    configured = build_user_message(state) if enabled else DEFAULT_REPAIR_MESSAGE
     return {
-        "enabled": bool(state.get("enabled")),
+        "enabled": enabled,
         "reason": state.get("reason"),
         "custom_message": state.get("custom_message"),
-        "message": build_user_message(state) if state.get("enabled") else None,
+        "message": configured if enabled else None,
+        "default_message": DEFAULT_REPAIR_MESSAGE,
+        "repair_preview": configured,
         "ends_at": state.get("ends_at"),
         "remaining": remaining,
         "updated_at": state.get("updated_at"),

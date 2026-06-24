@@ -15,6 +15,8 @@ type MaintenanceState = {
   reason: string;
   custom_message?: string | null;
   message: string | null;
+  default_message?: string;
+  repair_preview?: string;
   ends_at: string | null;
   remaining: string | null;
   presets: Record<string, string>;
@@ -141,7 +143,9 @@ export function MaintenancePanel() {
       const payload = buildPayload();
       const d = await api.put<MaintenanceState>("/maintenance", payload);
       setState(d);
-      toast.success("حالت تعمیر فعال شد — ربات برای کاربران غیرفعال است");
+      toast.success(
+        "پیام تعمیر فعال شد — هنگام خاموشی ربات اصلی، این متن به کاربران نمایش داده می‌شود"
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "خطا");
     } finally {
@@ -154,7 +158,7 @@ export function MaintenancePanel() {
     try {
       const d = await api.put<MaintenanceState>("/maintenance", { enabled: false });
       setState(d);
-      toast.success("ربات برای کاربران فعال شد");
+      toast.success("پیام سفارشی غیرفعال — هنگام خاموشی، پیام پیش‌فرض نمایش داده می‌شود");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "خطا");
     } finally {
@@ -169,15 +173,21 @@ export function MaintenancePanel() {
   return (
     <div className="grid gap-6 lg:grid-cols-2 max-w-5xl">
       <Card>
-        <CardTitle className="mb-4 flex items-center gap-2">
+        <CardTitle className="mb-2 flex items-center gap-2">
           <Wrench size={18} />
-          حالت تعمیر / توسعه ربات
+          ربات پشتیبان (تعمیر)
         </CardTitle>
+        <p className="text-sm text-text-muted mb-5 leading-relaxed">
+          وقتی ربات اصلی در حال بروزرسانی یا راه‌اندازی مجدد است و پاسخ نمی‌دهد، یک
+          سرویس سبک جایگزین همان <b>@ربات</b> را پاسخ می‌دهد تا کاربر پیام خالی نبیند.
+          این تنظیمات فقط همان پیام جایگزین را کنترل می‌کنند — ربات اصلی همچنان برای
+          کاربران عادی فعال می‌ماند.
+        </p>
 
         {state.enabled ? (
           <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 mb-6 space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-warning">ربات برای کاربران غیرفعال است</span>
+              <span className="font-medium text-warning">پیام تعمیر سفارشی فعال است</span>
               <Badge status="pending">فعال</Badge>
             </div>
             {state.remaining && (
@@ -193,11 +203,14 @@ export function MaintenancePanel() {
               />
             )}
             <Button variant="danger" className="mt-2" onClick={disable} disabled={saving}>
-              {saving ? "…" : "فعال‌سازی ربات"}
+              {saving ? "…" : "بازگشت به پیام پیش‌فرض"}
             </Button>
           </div>
         ) : (
-          <p className="text-sm text-text-muted mb-6">ربات در حال حاضر برای همه کاربران فعال است.</p>
+          <p className="text-sm text-text-muted mb-6">
+            پیام سفارشی غیرفعال است. در صورت خاموشی ربات اصلی، پیام پیش‌فرض «موقتاً در
+            دسترس نیست» نمایش داده می‌شود.
+          </p>
         )}
 
         {!state.enabled && (
@@ -226,7 +239,8 @@ export function MaintenancePanel() {
             <div>
               <label className="text-xs text-text-muted block mb-1.5">پیام سفارشی (اختیاری)</label>
               <p className="text-xs text-text-muted mb-2">
-                اگر پر شود جایگزین متن پیش‌فرض می‌شود. HTML مجاز است (&lt;b&gt;، &lt;i&gt;).
+                قبل از deploy یا بروزرسانی، این پیام را فعال کنید تا کاربران در زمان
+                خاموشی ربات اصلی، متن مناسب ببینند. HTML مجاز است (&lt;b&gt;، &lt;i&gt;).
               </p>
               <textarea
                 className="w-full rounded-lg border border-border bg-background p-3 text-sm min-h-[120px]"
@@ -248,7 +262,7 @@ export function MaintenancePanel() {
             </div>
 
             <div>
-              <label className="text-xs text-text-muted block mb-2">مدت زمان</label>
+              <label className="text-xs text-text-muted block mb-2">مدت نمایش پیام (اختیاری)</label>
               <div className="flex flex-wrap gap-2 mb-3">
                 <Button
                   type="button"
@@ -351,14 +365,14 @@ export function MaintenancePanel() {
             </div>
 
             <Button onClick={enable} disabled={saving} className="w-full sm:w-auto">
-              {saving ? "در حال فعال‌سازی…" : "غیرفعال کردن ربات"}
+              {saving ? "در حال ذخیره…" : "فعال‌سازی پیام تعمیر"}
             </Button>
           </div>
         )}
       </Card>
 
       <Card>
-        <CardTitle className="mb-4">پیش‌نمایش پیام کاربران</CardTitle>
+        <CardTitle className="mb-4">پیش‌نمایش پیام (ربات پشتیبان)</CardTitle>
         <div
           className="rounded-xl border border-border bg-background/60 p-4 text-sm leading-relaxed"
           dangerouslySetInnerHTML={{
@@ -371,11 +385,22 @@ export function MaintenancePanel() {
         />
         {!customMessage.trim() && (
           <p className="text-xs text-text-muted mt-3">
-            در حال نمایش متن پیش‌فرض «{REASONS.find((r) => r.key === reason)?.label}». پیام سفارشی را در کنار آن اضافه کنید.
+            در حال نمایش متن پیش‌فرض «{REASONS.find((r) => r.key === reason)?.label}».
           </p>
         )}
+        {!state.enabled && (
+          <div className="mt-4 rounded-lg border border-border/60 bg-surface p-3 text-xs text-text-muted leading-relaxed">
+            <p className="font-medium text-text-secondary mb-1">پیام پیش‌فرض (بدون فعال‌سازی)</p>
+            <div
+              dangerouslySetInnerHTML={{
+                __html: (state.default_message || "").replace(/\n/g, "<br/>"),
+              }}
+            />
+          </div>
+        )}
         <p className="text-xs text-text-muted mt-4">
-          مدیران تلگرام (BOT_ADMINS) همچنان می‌توانند از ربات استفاده کنند.
+          این پیام فقط زمانی ارسال می‌شود که ربات اصلی موقتاً در دسترس نباشد (مثلاً
+          هنگام deploy).
         </p>
       </Card>
     </div>
