@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +18,7 @@ from panel.auth.permissions import (
     merge_permissions,
 )
 from panel.auth.security import hash_password
-from panel.config import get_settings, load_payment_info, load_plans, plans_diagnostics, save_plans
+from panel.config import ensure_bot_path, get_settings, load_payment_info, load_plans, plans_diagnostics, resolve_shared_data_dir, save_plans
 from panel.db.models import AdminUser
 from panel.db.session import get_db
 from panel.services.audit import log_action
@@ -127,6 +127,118 @@ async def get_payment(_admin: AdminUser = Depends(require_permission("settings_p
             "(/opt/nexoranode-bot/.env) قرار دهید."
         )
     return {**info, "note": note}
+
+
+class ReferralSettingsBody(BaseModel):
+    referrer_bonus_toman: int = Field(ge=0)
+    friend_welcome: dict
+    texts: dict[str, str]
+    images: dict[str, str] | None = None
+
+
+@router.get("/referral")
+async def get_referral_settings(
+    _admin: AdminUser = Depends(require_permission("settings_plans", "read")),
+):
+    ensure_bot_path()
+    from app.bot.services.referral_settings import load_referral_settings, save_referral_settings
+
+    data_dir = resolve_shared_data_dir()
+    ref_path = data_dir / "referral.json"
+    if not ref_path.is_file():
+        save_referral_settings(load_referral_settings(data_dir), data_dir)
+    data = load_referral_settings(data_dir)
+    landing = data_dir / (data.get("images", {}).get("landing") or "referral_landing.jpg")
+    ready = data_dir / (data.get("images", {}).get("ready_post") or "referral_post.jpg")
+    return {
+        **data,
+        "image_urls": {
+            "landing": "/settings/referral/image/landing" if landing.is_file() else None,
+            "ready_post": "/settings/referral/image/ready_post" if ready.is_file() else None,
+        },
+    }
+
+
+@router.put("/referral")
+async def update_referral_settings(
+    body: ReferralSettingsBody,
+    admin: AdminUser = Depends(require_permission("settings_plans", "write")),
+    session: AsyncSession = Depends(get_db),
+):
+    ensure_bot_path()
+    from app.bot.services.referral_settings import save_referral_settings
+
+    fw = body.friend_welcome
+    if fw.get("type") not in ("discount_percent", "wallet_toman"):
+        raise HTTPException(400, "نوع هدیه دوست نامعتبر است")
+    payload = {
+        "referrer_bonus_toman": body.referrer_bonus_toman,
+        "friend_welcome": fw,
+        "texts": body.texts,
+        "images": body.images or {},
+    }
+    path = save_referral_settings(payload, resolve_shared_data_dir())
+    await log_action(session, admin.id, "update_referral_settings", target_type="settings", target_id=str(path))
+    return {"success": True, "path": str(path)}
+
+
+@router.post("/referral/image")
+async def upload_referral_image(
+    slot: str = Form(...),
+    file: UploadFile = File(...),
+    admin: AdminUser = Depends(require_permission("settings_plans", "write")),
+    session: AsyncSession = Depends(get_db),
+):
+    if slot not in ("landing", "ready_post"):
+        raise HTTPException(400, "اسلات تصویر نامعتبر است")
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in ("jpg", "jpeg", "png", "webp"):
+        raise HTTPException(400, "فرمت تصویر باید jpg، png یا webp باشد")
+    filename = f"referral_{slot}.{ 'jpg' if ext == 'jpeg' else ext}"
+    data_dir = resolve_shared_data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    dest = data_dir / filename
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(400, "حداکثر حجم تصویر ۵ مگابایت است")
+    dest.write_bytes(content)
+
+    ensure_bot_path()
+    from app.bot.services.referral_settings import load_referral_settings, save_referral_settings
+
+    data = load_referral_settings(data_dir)
+    images = data.get("images") if isinstance(data.get("images"), dict) else {}
+    images[slot] = filename
+    data["images"] = images
+    save_referral_settings(data, data_dir)
+    await log_action(session, admin.id, "upload_referral_image", target_type="settings", target_id=slot)
+    return {"success": True, "filename": filename, "url": f"/settings/referral/image/{slot}"}
+
+
+@router.get("/referral/image/{slot}")
+async def get_referral_image(
+    slot: str,
+    _admin: AdminUser = Depends(require_permission("settings_plans", "read")),
+):
+    from fastapi.responses import FileResponse
+
+    if slot not in ("landing", "ready_post"):
+        raise HTTPException(404)
+    ensure_bot_path()
+    from app.bot.services.referral_settings import load_referral_settings
+
+    data_dir = resolve_shared_data_dir()
+    data = load_referral_settings(data_dir)
+    name = (data.get("images") or {}).get(slot) or f"referral_{slot}.jpg"
+    path = data_dir / name
+    if not path.is_file():
+        raise HTTPException(404)
+    media = "image/jpeg"
+    if path.suffix.lower() == ".png":
+        media = "image/png"
+    elif path.suffix.lower() == ".webp":
+        media = "image/webp"
+    return FileResponse(path, media_type=media)
 
 
 @router.get("/system")

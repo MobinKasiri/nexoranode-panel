@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { GregorianDateField } from "@/components/ui/gregorian-date-field";
 import { api } from "@/lib/api";
 import type { UserItem, VPNConfigItem } from "@/types";
 
@@ -299,7 +300,7 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite, can
               />
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-text-muted block mb-1">ترافیک (GB)</label>
               <Input
@@ -327,16 +328,6 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite, can
                 onChange={(e) => setForm({ ...form, limit_ip: parseInt(e.target.value, 10) || 0 })}
               />
             </div>
-            <div>
-              <label className="text-text-muted block mb-1">انقضا (میلادی)</label>
-              <Input
-                type="date"
-                className="font-latin"
-                disabled={form.start_after_first_use}
-                value={form.expiry_date}
-                onChange={(e) => setForm({ ...form, expiry_date: e.target.value })}
-              />
-            </div>
           </div>
           <label className="flex items-center gap-2">
             <Checkbox
@@ -345,6 +336,11 @@ export function ClientModal({ open, onOpenChange, config, onSaved, canWrite, can
             />
             شروع پس از اولین اتصال
           </label>
+          <GregorianDateField
+            value={form.expiry_date}
+            onChange={(expiry_date) => setForm({ ...form, expiry_date })}
+            disabled={form.start_after_first_use}
+          />
           <label className="flex items-center gap-2">
             <Checkbox
               checked={form.enable}

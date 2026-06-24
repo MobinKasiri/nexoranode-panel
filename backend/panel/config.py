@@ -50,8 +50,8 @@ class Settings(BaseSettings):
     PLANS_FILE: str = "/data/plans/plans.json"
     BOT_ROOT: str = "/bot"
 
-    REFERRAL_BONUS_TOMAN: int = 8000
-    REFERRAL_FRIEND_BONUS_TOMAN: int = 5000
+    REFERRAL_BONUS_TOMAN: int = 50000
+    REFERRAL_FRIEND_BONUS_TOMAN: int = 0
     QUANTITY_MAX: int = 20
 
     CARD_NUMBER: str = ""

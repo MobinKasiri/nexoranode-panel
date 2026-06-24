@@ -24,31 +24,12 @@ class ApprovalError(Exception):
 
 async def _credit_referrer(session: AsyncSession, user) -> None:
     ensure_bot_path()
-    from app.bot.services.wallet import credit
-    from app.db.models import Referral
-    from app.db.models.transaction import TX_REFERRAL
-    from app.bot.utils.discount import record_usage  # noqa: F401
+    from app.bot.services.referral_reward import credit_referrer_for_purchase
+    from panel.config import get_settings, resolve_shared_data_dir
 
-    settings = get_settings()
-    if not user.referred_by:
-        return
-    bonus = int(settings.REFERRAL_BONUS_TOMAN or 0)
-    if bonus <= 0:
-        return
-    ref = await Referral.get_by_referred(session, user.tg_id)
-    if not ref:
-        return
-    try:
-        await credit(
-            session,
-            ref.referrer_id,
-            bonus,
-            "پاداش معرفی",
-            tx_type=TX_REFERRAL,
-        )
-        await Referral.add_purchase(session, ref.id, bonus)
-    except Exception:
-        logger.exception("Failed to credit referrer %s", ref.referrer_id)
+    await credit_referrer_for_purchase(
+        session, user, data_dir=resolve_shared_data_dir(get_settings())
+    )
 
 
 async def approve_transaction(
