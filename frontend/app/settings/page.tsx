@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { CreditCard, Gift, Shield, Tag, Wrench } from "lucide-react";
+import { CreditCard, Gift, PartyPopper, Shield, Tag, Wrench } from "lucide-react";
 import { AppShell } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardTitle } from "@/components/ui/card";
 import { AdminsPanel } from "@/components/settings/AdminsPanel";
+import { FestivalPanel } from "@/components/settings/FestivalPanel";
 import { MaintenancePanel } from "@/components/settings/MaintenancePanel";
 import { PlansEditor, type PlansData } from "@/components/settings/PlansEditor";
 import { ReferralSettingsEditor } from "@/components/settings/ReferralSettingsEditor";
@@ -59,6 +60,7 @@ export default function SettingsPage() {
   const tabs = [
     { key: "plans", label: "پلن‌ها", icon: Tag, show: hasPermission(admin, "settings_plans", "read") },
     { key: "referral", label: "دعوت دوستان", icon: Gift, show: hasPermission(admin, "settings_plans", "read") },
+    { key: "festival", label: "جشنواره", icon: PartyPopper, show: hasPermission(admin, "discounts", "read") },
     { key: "maintenance", label: "تعمیر ربات", icon: Wrench, show: hasPermission(admin, "settings_maintenance", "read") },
     { key: "payment", label: "پرداخت", icon: CreditCard, show: hasPermission(admin, "settings_payment", "read") },
     { key: "admins", label: "مدیران", icon: Shield, show: admin?.is_superadmin },
@@ -102,6 +104,8 @@ export default function SettingsPage() {
       {tab === "referral" && hasPermission(admin, "settings_plans", "read") && (
         <ReferralSettingsEditor />
       )}
+
+      {tab === "festival" && hasPermission(admin, "discounts", "read") && <FestivalPanel />}
 
       {tab === "maintenance" && hasPermission(admin, "settings_maintenance", "read") && <MaintenancePanel />}
 
