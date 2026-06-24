@@ -12,6 +12,7 @@ from panel.services.maintenance import (
     MAINTENANCE_PRESETS,
     disable_maintenance,
     enable_maintenance,
+    load_maintenance,
     public_maintenance_state,
     save_default_offline_message,
 )
@@ -29,6 +30,12 @@ class EnableMaintenanceBody(BaseModel):
 
 class DefaultOfflineBody(BaseModel):
     default_offline_message: str | None = None
+
+
+@router.get("/internal")
+async def internal_maintenance_state():
+    """Docker-internal endpoint for repair-bot gateway (no auth)."""
+    return load_maintenance()
 
 
 @router.get("")

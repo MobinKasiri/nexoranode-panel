@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from panel.config import get_settings, resolve_shared_data_dir
+from panel.config import get_settings, mirror_maintenance_to_bot, resolve_shared_data_dir
 from panel.services.datetime_utils import parse_optional_datetime
 
 logger = logging.getLogger(__name__)
@@ -93,6 +93,7 @@ def save_maintenance(state: dict[str, Any]) -> Path:
         json.dump(state, fh, ensure_ascii=False, indent=2)
         fh.write("\n")
     tmp.replace(path)
+    mirror_maintenance_to_bot(state)
     return path
 
 

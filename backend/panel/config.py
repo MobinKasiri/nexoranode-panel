@@ -97,6 +97,51 @@ def resolve_plans_write_path(settings: Settings | None = None) -> Path:
     return resolve_shared_data_dir(settings) / "plans.json"
 
 
+def _maintenance_bot_candidates(settings: Settings) -> list[Path]:
+    root = Path(settings.BOT_ROOT)
+    return [
+        root / "app" / "data" / "maintenance.json",
+        root / "maintenance.json",
+    ]
+
+
+def mirror_maintenance_to_bot(
+    state: dict,
+    settings: Settings | None = None,
+) -> dict:
+    """After panel save, copy maintenance.json to bot-side paths when writable."""
+    settings = settings or get_settings()
+    canonical = resolve_shared_data_dir(settings) / "maintenance.json"
+    shared_mount = False
+    try:
+        if canonical.resolve() == (resolve_shared_data_dir(settings) / "maintenance.json").resolve():
+            shared_mount = True
+    except OSError:
+        shared_mount = str(canonical).endswith("/data/plans/maintenance.json")
+
+    mirrored: list[str] = []
+    skipped: list[str] = []
+
+    for bot_p in _maintenance_bot_candidates(settings):
+        if _same_path(bot_p, canonical):
+            mirrored.append(str(bot_p))
+            continue
+        if _mirror_plans_data(state, bot_p):
+            mirrored.append(str(bot_p))
+            logger.info("Mirrored maintenance to bot path %s", bot_p)
+        elif _plans_content_matches(canonical, bot_p):
+            mirrored.append(str(bot_p))
+        else:
+            skipped.append(str(bot_p))
+
+    return {
+        "canonical": str(canonical),
+        "mirrored": mirrored,
+        "skipped": skipped,
+        "shared_mount": shared_mount,
+    }
+
+
 def _plans_bot_candidates(settings: Settings) -> list[Path]:
     root = Path(settings.BOT_ROOT)
     return [
