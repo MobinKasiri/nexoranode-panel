@@ -4,8 +4,9 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -16,6 +17,7 @@ from panel.config import ensure_bot_path, ensure_plans_file, get_settings, recon
 from panel.db.models import AdminUser, Base
 from panel.db.session import async_session, engine
 from panel.auth.security import hash_password
+from panel.services.bot_schema import ensure_bot_schema
 from panel.routers import (
     activity,
     broadcast,
@@ -93,6 +95,11 @@ async def lifespan(app: FastAPI):
     except OSError as exc:
         logger.warning("Could not initialize plans file: %s", exc)
     await _init_database()
+    if _db_ready:
+        try:
+            await ensure_bot_schema(engine)
+        except Exception as exc:
+            logger.error("Bot schema sync failed: %s", exc)
     yield
     await engine.dispose()
 
@@ -103,6 +110,14 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
+
+    @app.exception_handler(Exception)
+    async def log_unhandled_exception(request: Request, exc: Exception):
+        if isinstance(exc, HTTPException):
+            raise exc
+        logger.exception("Unhandled API error on %s %s", request.method, request.url.path)
+        return JSONResponse(status_code=500, content={"detail": "خطای داخلی سرور"})
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -136,7 +151,19 @@ def create_app() -> FastAPI:
         try:
             async with engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
-            return {"status": "ok", "db": "ok"}
+            bot_ok = True
+            try:
+                ensure_bot_path()
+                from app.db.models import User
+
+                async with async_session() as session:
+                    await User.count(session)
+            except Exception as exc:
+                bot_ok = False
+                logger.warning("Health bot schema check failed: %s", exc)
+            if bot_ok:
+                return {"status": "ok", "db": "ok", "bot_schema": "ok"}
+            return {"status": "degraded", "db": "ok", "bot_schema": "error"}
         except Exception as exc:
             logger.warning("Health DB check failed: %s", exc)
             return {"status": "degraded", "db": "error"}
