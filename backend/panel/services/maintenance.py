@@ -52,6 +52,7 @@ def _default_state() -> dict[str, Any]:
         "enabled": False,
         "reason": "maintenance",
         "custom_message": None,
+        "default_offline_message": None,
         "ends_at": None,
         "updated_at": None,
         "updated_by_admin_id": None,
@@ -126,18 +127,27 @@ def build_user_message(state: dict[str, Any]) -> str:
     return base
 
 
+def build_default_offline_message(state: dict[str, Any]) -> str:
+    custom = state.get("default_offline_message")
+    if isinstance(custom, str) and custom.strip():
+        return custom.strip()
+    return DEFAULT_REPAIR_MESSAGE
+
+
 def public_maintenance_state() -> dict[str, Any]:
     state = load_maintenance()
     remaining = remaining_persian(state.get("ends_at"))
     enabled = bool(state.get("enabled"))
-    configured = build_user_message(state) if enabled else DEFAULT_REPAIR_MESSAGE
+    offline_msg = build_default_offline_message(state)
+    planned_msg = build_user_message(state) if enabled else None
     return {
         "enabled": enabled,
         "reason": state.get("reason"),
         "custom_message": state.get("custom_message"),
-        "message": configured if enabled else None,
-        "default_message": DEFAULT_REPAIR_MESSAGE,
-        "repair_preview": configured,
+        "default_offline_message": state.get("default_offline_message"),
+        "message": planned_msg,
+        "default_message": offline_msg,
+        "repair_preview": planned_msg or offline_msg,
         "ends_at": state.get("ends_at"),
         "remaining": remaining,
         "updated_at": state.get("updated_at"),
@@ -168,14 +178,15 @@ def enable_maintenance(
     else:
         end_dt = datetime.utcnow() + timedelta(hours=1)
 
-    state = {
+    state = load_maintenance()
+    state.update({
         "enabled": True,
         "reason": reason,
         "custom_message": custom_message.strip() if custom_message else None,
         "ends_at": end_dt.replace(microsecond=0).isoformat(),
         "updated_at": datetime.utcnow().replace(microsecond=0).isoformat(),
         "updated_by_admin_id": admin_id,
-    }
+    })
     save_maintenance(state)
     return public_maintenance_state()
 
@@ -187,5 +198,14 @@ def disable_maintenance(admin_id: int) -> dict[str, Any]:
         "updated_at": datetime.utcnow().replace(microsecond=0).isoformat(),
         "updated_by_admin_id": admin_id,
     })
+    save_maintenance(state)
+    return public_maintenance_state()
+
+
+def save_default_offline_message(message: str | None, admin_id: int) -> dict[str, Any]:
+    state = load_maintenance()
+    state["default_offline_message"] = message.strip() if message and message.strip() else None
+    state["updated_at"] = datetime.utcnow().replace(microsecond=0).isoformat()
+    state["updated_by_admin_id"] = admin_id
     save_maintenance(state)
     return public_maintenance_state()

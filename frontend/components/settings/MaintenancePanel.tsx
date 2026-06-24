@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Calendar, Clock, Wrench } from "lucide-react";
+import { Calendar, Clock, MessageSquare, Wrench } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,9 +14,9 @@ type MaintenanceState = {
   enabled: boolean;
   reason: string;
   custom_message?: string | null;
+  default_offline_message?: string | null;
   message: string | null;
   default_message?: string;
-  repair_preview?: string;
   ends_at: string | null;
   remaining: string | null;
   presets: Record<string, string>;
@@ -70,7 +70,7 @@ function previewRemaining(
 
 export function MaintenancePanel() {
   const [state, setState] = useState<MaintenanceState | null>(null);
-  const [reason, setReason] = useState("developing");
+  const [reason, setReason] = useState("updating");
   const [duration, setDuration] = useState(60);
   const [timeMode, setTimeMode] = useState<TimeMode>("preset");
   const [customHours, setCustomHours] = useState("1");
@@ -78,8 +78,10 @@ export function MaintenancePanel() {
   const [endDate, setEndDate] = useState("");
   const [endTime, setEndTime] = useState("");
   const [customMessage, setCustomMessage] = useState("");
+  const [defaultOfflineDraft, setDefaultOfflineDraft] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingOffline, setSavingOffline] = useState(false);
+  const [savingPlanned, setSavingPlanned] = useState(false);
 
   const endDateTime = combineDateTime(endDate, endTime);
 
@@ -91,6 +93,7 @@ export function MaintenancePanel() {
         setState(d);
         if (d.reason) setReason(d.reason);
         if (d.custom_message) setCustomMessage(d.custom_message);
+        setDefaultOfflineDraft(d.default_offline_message || "");
       })
       .finally(() => setLoading(false));
   };
@@ -98,15 +101,16 @@ export function MaintenancePanel() {
   useEffect(() => { load(); }, []);
 
   const presetText = state?.presets[reason] || state?.presets.maintenance || "";
-
-  const previewBase = customMessage.trim() || presetText;
+  const plannedPreviewBase = customMessage.trim() || presetText;
+  const offlinePreview =
+    defaultOfflineDraft.trim() || state?.default_message || "";
 
   const previewRemainingText = useMemo(
     () => previewRemaining(timeMode, duration, customHours, customMinutes, endDateTime),
     [timeMode, duration, customHours, customMinutes, endDateTime]
   );
 
-  const buildPayload = () => {
+  const buildPlannedPayload = () => {
     const payload: {
       enabled: boolean;
       reason: string;
@@ -120,9 +124,7 @@ export function MaintenancePanel() {
     };
 
     if (timeMode === "datetime") {
-      if (!endDateTime) {
-        throw new Error("تاریخ و ساعت پایان را وارد کنید");
-      }
+      if (!endDateTime) throw new Error("تاریخ و ساعت پایان را وارد کنید");
       payload.ends_at = endDateTime;
     } else if (timeMode === "minutes") {
       const h = parseInt(customHours, 10) || 0;
@@ -133,36 +135,48 @@ export function MaintenancePanel() {
     } else {
       payload.duration_minutes = duration;
     }
-
     return payload;
   };
 
-  const enable = async () => {
-    setSaving(true);
+  const saveOfflineDefault = async () => {
+    setSavingOffline(true);
     try {
-      const payload = buildPayload();
-      const d = await api.put<MaintenanceState>("/maintenance", payload);
+      const d = await api.put<MaintenanceState>("/maintenance/offline-default", {
+        default_offline_message: defaultOfflineDraft.trim() || null,
+      });
       setState(d);
-      toast.success(
-        "پیام تعمیر فعال شد — هنگام خاموشی ربات اصلی، این متن به کاربران نمایش داده می‌شود"
-      );
+      toast.success("پیام پیش‌فرض بروزرسانی ذخیره شد");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "خطا");
     } finally {
-      setSaving(false);
+      setSavingOffline(false);
     }
   };
 
-  const disable = async () => {
-    setSaving(true);
+  const enablePlanned = async () => {
+    setSavingPlanned(true);
     try {
-      const d = await api.put<MaintenanceState>("/maintenance", { enabled: false });
+      const payload = buildPlannedPayload();
+      const d = await api.put<MaintenanceState>("/maintenance", payload);
       setState(d);
-      toast.success("پیام سفارشی غیرفعال — هنگام خاموشی، پیام پیش‌فرض نمایش داده می‌شود");
+      toast.success("حالت تعمیر برنامه‌ریزی‌شده فعال شد — همه کاربران این پیام را می‌بینند");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "خطا");
     } finally {
-      setSaving(false);
+      setSavingPlanned(false);
+    }
+  };
+
+  const disablePlanned = async () => {
+    setSavingPlanned(true);
+    try {
+      const d = await api.put<MaintenanceState>("/maintenance", { enabled: false });
+      setState(d);
+      toast.success("حالت تعمیر غیرفعال شد — ربات اصلی دوباره پاسخ می‌دهد");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "خطا");
+    } finally {
+      setSavingPlanned(false);
     }
   };
 
@@ -171,238 +185,185 @@ export function MaintenancePanel() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2 max-w-5xl">
-      <Card>
-        <CardTitle className="mb-2 flex items-center gap-2">
-          <Wrench size={18} />
-          ربات پشتیبان (تعمیر)
-        </CardTitle>
-        <p className="text-sm text-text-muted mb-5 leading-relaxed">
-          وقتی ربات اصلی در حال بروزرسانی یا راه‌اندازی مجدد است و پاسخ نمی‌دهد، یک
-          سرویس سبک جایگزین همان <b>@ربات</b> را پاسخ می‌دهد تا کاربر پیام خالی نبیند.
-          این تنظیمات فقط همان پیام جایگزین را کنترل می‌کنند — ربات اصلی همچنان برای
-          کاربران عادی فعال می‌ماند.
-        </p>
-
-        {state.enabled ? (
-          <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 mb-6 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-warning">پیام تعمیر سفارشی فعال است</span>
-              <Badge status="pending">فعال</Badge>
-            </div>
-            {state.remaining && (
-              <p className="text-sm text-text-secondary">زمان باقی‌مانده: {state.remaining}</p>
-            )}
-            {state.ends_at && (
-              <p className="text-xs text-text-muted">تا {formatDate(state.ends_at)}</p>
-            )}
-            {state.message && (
-              <div
-                className="rounded-lg border border-border/60 bg-background/60 p-3 text-sm leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: state.message.replace(/\n/g, "<br/>") }}
-              />
-            )}
-            <Button variant="danger" className="mt-2" onClick={disable} disabled={saving}>
-              {saving ? "…" : "بازگشت به پیام پیش‌فرض"}
-            </Button>
-          </div>
-        ) : (
-          <p className="text-sm text-text-muted mb-6">
-            پیام سفارشی غیرفعال است. در صورت خاموشی ربات اصلی، پیام پیش‌فرض «موقتاً در
-            دسترس نیست» نمایش داده می‌شود.
+    <div className="grid gap-6 lg:grid-cols-2 max-w-6xl">
+      <div className="space-y-6">
+        {/* Scenario 1 */}
+        <Card>
+          <CardTitle className="mb-2 flex items-center gap-2 text-base">
+            <MessageSquare size={18} />
+            ۱ — پیام هنگام بروزرسانی ناگهانی
+          </CardTitle>
+          <p className="text-sm text-text-muted mb-4 leading-relaxed">
+            وقتی حالت تعمیر را فعال <b>نکرده‌اید</b> ولی ربات اصلی موقتاً خاموش است
+            (deploy، restart، خطا)، این پیام به کاربران نمایش داده می‌شود.
           </p>
-        )}
+          <textarea
+            className="w-full rounded-lg border border-border bg-background p-3 text-sm min-h-[120px]"
+            value={defaultOfflineDraft}
+            onChange={(e) => setDefaultOfflineDraft(e.target.value)}
+            placeholder="خالی = پیام پیش‌فرض سیستم. HTML مجاز است."
+          />
+          <div className="flex flex-wrap gap-2 mt-3">
+            <Button onClick={saveOfflineDefault} disabled={savingOffline} size="sm">
+              {savingOffline ? "…" : "ذخیره پیام پیش‌فرض"}
+            </Button>
+            {defaultOfflineDraft.trim() && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setDefaultOfflineDraft("")}
+              >
+                بازگشت به پیش‌فرض سیستم
+              </Button>
+            )}
+          </div>
+        </Card>
 
-        {!state.enabled && (
-          <div className="space-y-5">
-            <div>
-              <label className="text-xs text-text-muted block mb-2">دلیل (متن پیش‌فرض)</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {REASONS.map((r) => (
-                  <button
-                    key={r.key}
-                    type="button"
-                    onClick={() => setReason(r.key)}
-                    className={cn(
-                      "text-right rounded-lg border px-3 py-2.5 text-sm transition-colors",
-                      reason === r.key
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border hover:border-primary/40"
-                    )}
-                  >
-                    {r.label}
-                  </button>
-                ))}
+        {/* Scenario 2 */}
+        <Card>
+          <CardTitle className="mb-2 flex items-center gap-2 text-base">
+            <Wrench size={18} />
+            ۲ — حالت تعمیر برنامه‌ریزی‌شده
+          </CardTitle>
+          <p className="text-sm text-text-muted mb-4 leading-relaxed">
+            برای توقف عمدی سرویس (توسعه ۲ ساعته، فروش متوقف، بروزرسانی بزرگ) این حالت را
+            فعال کنید. تا زمان پایان، <b>همه کاربران</b> فقط این پیام را می‌بینند — ربات
+            اصلی پاسخ نمی‌دهد.
+          </p>
+
+          {state.enabled ? (
+            <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-warning">حالت تعمیر فعال است</span>
+                <Badge status="pending">فعال</Badge>
               </div>
-            </div>
-
-            <div>
-              <label className="text-xs text-text-muted block mb-1.5">پیام سفارشی (اختیاری)</label>
-              <p className="text-xs text-text-muted mb-2">
-                قبل از deploy یا بروزرسانی، این پیام را فعال کنید تا کاربران در زمان
-                خاموشی ربات اصلی، متن مناسب ببینند. HTML مجاز است (&lt;b&gt;، &lt;i&gt;).
-              </p>
-              <textarea
-                className="w-full rounded-lg border border-border bg-background p-3 text-sm min-h-[120px]"
-                value={customMessage}
-                onChange={(e) => setCustomMessage(e.target.value)}
-                placeholder="مثال: 🔧 ربات تا ساعت ۱۸:۰۰ در حال بروزرسانی است. لطفاً بعداً مراجعه کنید."
-              />
-              {customMessage.trim() && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="mt-2 text-text-muted"
-                  onClick={() => setCustomMessage("")}
-                >
-                  پاک کردن پیام سفارشی
-                </Button>
+              {state.remaining && (
+                <p className="text-sm text-text-secondary">باقی‌مانده: {state.remaining}</p>
               )}
+              {state.ends_at && (
+                <p className="text-xs text-text-muted">تا {formatDate(state.ends_at)}</p>
+              )}
+              {state.message && (
+                <div
+                  className="rounded-lg border border-border/60 bg-background/60 p-3 text-sm leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: state.message.replace(/\n/g, "<br/>") }}
+                />
+              )}
+              <Button variant="danger" onClick={disablePlanned} disabled={savingPlanned}>
+                {savingPlanned ? "…" : "غیرفعال کردن — بازگشت به ربات اصلی"}
+              </Button>
             </div>
-
-            <div>
-              <label className="text-xs text-text-muted block mb-2">مدت نمایش پیام (اختیاری)</label>
-              <div className="flex flex-wrap gap-2 mb-3">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={timeMode === "preset" ? "default" : "outline"}
-                  onClick={() => setTimeMode("preset")}
-                >
-                  گزینه‌های آماده
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={timeMode === "minutes" ? "default" : "outline"}
-                  onClick={() => setTimeMode("minutes")}
-                >
-                  مدت دلخواه
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={timeMode === "datetime" ? "default" : "outline"}
-                  onClick={() => setTimeMode("datetime")}
-                >
-                  تاریخ و ساعت دقیق
-                </Button>
-              </div>
-
-              {timeMode === "preset" && (
-                <div className="flex flex-wrap gap-2">
-                  {DURATIONS.map((d) => (
-                    <Button
-                      key={d.minutes}
+          ) : (
+            <div className="space-y-5">
+              <div>
+                <label className="text-xs text-text-muted block mb-2">دلیل</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {REASONS.map((r) => (
+                    <button
+                      key={r.key}
                       type="button"
-                      size="sm"
-                      variant={duration === d.minutes ? "default" : "outline"}
-                      onClick={() => setDuration(d.minutes)}
+                      onClick={() => setReason(r.key)}
+                      className={cn(
+                        "text-right rounded-lg border px-3 py-2.5 text-sm transition-colors",
+                        reason === r.key
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border hover:border-primary/40"
+                      )}
                     >
-                      {d.label}
-                    </Button>
+                      {r.label}
+                    </button>
                   ))}
                 </div>
-              )}
+              </div>
 
-              {timeMode === "minutes" && (
-                <div className="grid grid-cols-2 gap-3 max-w-xs">
-                  <div>
-                    <label className="text-xs text-text-muted block mb-1">ساعت</label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={168}
-                      value={customHours}
-                      onChange={(e) => setCustomHours(e.target.value)}
-                      className="font-latin"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-text-muted block mb-1">دقیقه</label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={59}
-                      value={customMinutes}
-                      onChange={(e) => setCustomMinutes(e.target.value)}
-                      className="font-latin"
-                    />
-                  </div>
+              <div>
+                <label className="text-xs text-text-muted block mb-1.5">پیام سفارشی (اختیاری)</label>
+                <textarea
+                  className="w-full rounded-lg border border-border bg-background p-3 text-sm min-h-[100px]"
+                  value={customMessage}
+                  onChange={(e) => setCustomMessage(e.target.value)}
+                  placeholder="خالی = متن پیش‌فرض دلیل انتخاب‌شده"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-text-muted block mb-2">مدت زمان</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <Button type="button" size="sm" variant={timeMode === "preset" ? "default" : "outline"} onClick={() => setTimeMode("preset")}>گزینه‌های آماده</Button>
+                  <Button type="button" size="sm" variant={timeMode === "minutes" ? "default" : "outline"} onClick={() => setTimeMode("minutes")}>مدت دلخواه</Button>
+                  <Button type="button" size="sm" variant={timeMode === "datetime" ? "default" : "outline"} onClick={() => setTimeMode("datetime")}>تاریخ دقیق</Button>
                 </div>
-              )}
-
-              {timeMode === "datetime" && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
-                  <div>
-                    <label className="text-xs text-text-muted block mb-1">تاریخ پایان</label>
-                    <div className="relative">
-                      <Calendar size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                      <Input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="font-latin pr-10"
-                      />
+                {timeMode === "preset" && (
+                  <div className="flex flex-wrap gap-2">
+                    {DURATIONS.map((d) => (
+                      <Button key={d.minutes} type="button" size="sm" variant={duration === d.minutes ? "default" : "outline"} onClick={() => setDuration(d.minutes)}>{d.label}</Button>
+                    ))}
+                  </div>
+                )}
+                {timeMode === "minutes" && (
+                  <div className="grid grid-cols-2 gap-3 max-w-xs">
+                    <div>
+                      <label className="text-xs text-text-muted block mb-1">ساعت</label>
+                      <Input type="number" min={0} max={168} value={customHours} onChange={(e) => setCustomHours(e.target.value)} className="font-latin" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-text-muted block mb-1">دقیقه</label>
+                      <Input type="number" min={0} max={59} value={customMinutes} onChange={(e) => setCustomMinutes(e.target.value)} className="font-latin" />
                     </div>
                   </div>
-                  <div>
-                    <label className="text-xs text-text-muted block mb-1">ساعت پایان</label>
-                    <div className="relative">
-                      <Clock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                      <Input
-                        type="time"
-                        value={endTime}
-                        onChange={(e) => setEndTime(e.target.value)}
-                        disabled={!endDate}
-                        className="font-latin pr-10"
-                      />
+                )}
+                {timeMode === "datetime" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
+                    <div>
+                      <label className="text-xs text-text-muted block mb-1">تاریخ پایان</label>
+                      <div className="relative">
+                        <Calendar size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                        <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="font-latin pr-10" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-text-muted block mb-1">ساعت پایان</label>
+                      <div className="relative">
+                        <Clock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                        <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} disabled={!endDate} className="font-latin pr-10" />
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              <Button onClick={enablePlanned} disabled={savingPlanned}>
+                {savingPlanned ? "…" : "فعال‌سازی حالت تعمیر"}
+              </Button>
             </div>
+          )}
+        </Card>
+      </div>
 
-            <Button onClick={enable} disabled={saving} className="w-full sm:w-auto">
-              {saving ? "در حال ذخیره…" : "فعال‌سازی پیام تعمیر"}
-            </Button>
-          </div>
-        )}
-      </Card>
+      <div className="space-y-6">
+        <Card>
+          <CardTitle className="mb-3 text-base">پیش‌نمایش — بروزرسانی ناگهانی</CardTitle>
+          <p className="text-xs text-text-muted mb-3">وقتی حالت تعمیر OFF است و ربات اصلی down است</p>
+          <div
+            className="rounded-xl border border-border bg-background/60 p-4 text-sm leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: offlinePreview.replace(/\n/g, "<br/>") }}
+          />
+        </Card>
 
-      <Card>
-        <CardTitle className="mb-4">پیش‌نمایش پیام (ربات پشتیبان)</CardTitle>
-        <div
-          className="rounded-xl border border-border bg-background/60 p-4 text-sm leading-relaxed"
-          dangerouslySetInnerHTML={{
-            __html:
-              previewBase.replace(/\n/g, "<br/>") +
-              (previewRemainingText
-                ? `<br/><br/>⏱ زمان تقریبی: <b>${previewRemainingText}</b>`
-                : ""),
-          }}
-        />
-        {!customMessage.trim() && (
-          <p className="text-xs text-text-muted mt-3">
-            در حال نمایش متن پیش‌فرض «{REASONS.find((r) => r.key === reason)?.label}».
-          </p>
-        )}
-        {!state.enabled && (
-          <div className="mt-4 rounded-lg border border-border/60 bg-surface p-3 text-xs text-text-muted leading-relaxed">
-            <p className="font-medium text-text-secondary mb-1">پیام پیش‌فرض (بدون فعال‌سازی)</p>
-            <div
-              dangerouslySetInnerHTML={{
-                __html: (state.default_message || "").replace(/\n/g, "<br/>"),
-              }}
-            />
-          </div>
-        )}
-        <p className="text-xs text-text-muted mt-4">
-          این پیام فقط زمانی ارسال می‌شود که ربات اصلی موقتاً در دسترس نباشد (مثلاً
-          هنگام deploy).
-        </p>
-      </Card>
+        <Card>
+          <CardTitle className="mb-3 text-base">پیش‌نمایش — تعمیر برنامه‌ریزی‌شده</CardTitle>
+          <p className="text-xs text-text-muted mb-3">وقتی حالت تعمیر ON است</p>
+          <div
+            className="rounded-xl border border-border bg-background/60 p-4 text-sm leading-relaxed"
+            dangerouslySetInnerHTML={{
+              __html:
+                plannedPreviewBase.replace(/\n/g, "<br/>") +
+                (previewRemainingText ? `<br/><br/>⏱ زمان تقریبی: <b>${previewRemainingText}</b>` : ""),
+            }}
+          />
+        </Card>
+      </div>
     </div>
   );
 }

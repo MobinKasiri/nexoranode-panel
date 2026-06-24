@@ -13,6 +13,7 @@ from panel.services.maintenance import (
     disable_maintenance,
     enable_maintenance,
     public_maintenance_state,
+    save_default_offline_message,
 )
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
@@ -24,6 +25,10 @@ class EnableMaintenanceBody(BaseModel):
     duration_minutes: int | None = Field(default=None, ge=1, le=24 * 7 * 60)
     ends_at: str | None = None
     custom_message: str | None = None
+
+
+class DefaultOfflineBody(BaseModel):
+    default_offline_message: str | None = None
 
 
 @router.get("")
@@ -68,6 +73,23 @@ async def update_maintenance(
         state = disable_maintenance(admin.id)
         await log_action(session, admin.id, "maintenance_off", target_type="maintenance")
 
+    return state
+
+
+@router.put("/offline-default")
+async def update_offline_default(
+    body: DefaultOfflineBody,
+    admin: AdminUser = Depends(require_permission("settings_maintenance", "write")),
+    session: AsyncSession = Depends(get_db),
+):
+    state = save_default_offline_message(body.default_offline_message, admin.id)
+    await log_action(
+        session,
+        admin.id,
+        "maintenance_offline_default",
+        target_type="maintenance",
+        details="updated",
+    )
     return state
 
 
