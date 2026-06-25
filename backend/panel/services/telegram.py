@@ -123,7 +123,7 @@ class TelegramService:
 
     async def send_purchase_success(
         self, user_id: int, results: list, plan: dict
-    ) -> None:
+    ) -> bool:
         from panel.config import ensure_bot_path
         from panel.services.xui import get_vpn_service
 
@@ -142,7 +142,9 @@ class TelegramService:
                 else str(cfg.expiry_date.date())
             )
             sub_url = (
-                vpn.sub_url(cfg.subscription_id) if vpn else cfg.subscription_url
+                vpn.public_sub_url(cfg.subscription_id, cfg.subscription_url)
+                if vpn
+                else cfg.subscription_url
             )
             caption = self._service_activated_caption(
                 name=cfg.service_name,
@@ -152,24 +154,35 @@ class TelegramService:
                 expiry=expiry,
                 sub_url=sub_url,
             )
-            from panel.utils.qr import make_qr_png
+            try:
+                from panel.utils.qr import make_qr_png
 
-            await self.send_photo(
-                user_id,
-                make_qr_png(sub_url),
-                caption=caption,
-                filename="qr.png",
-                reply_markup=self._service_activated_keyboard(sub_url),
-            )
-            return
+                return await self.send_photo(
+                    user_id,
+                    make_qr_png(sub_url),
+                    caption=caption,
+                    filename="qr.png",
+                    reply_markup=self._service_activated_keyboard(sub_url),
+                )
+            except Exception:
+                logger.exception("send_photo failed for user %s — falling back to text", user_id)
+                return await self.send_message(
+                    user_id,
+                    caption,
+                    reply_markup=self._service_activated_keyboard(sub_url),
+                )
 
         lines = []
         for r in results:
             cfg = r.config if hasattr(r, "config") else r
-            url = vpn.sub_url(cfg.subscription_id) if vpn else cfg.subscription_url
+            url = (
+                vpn.public_sub_url(cfg.subscription_id, cfg.subscription_url)
+                if vpn
+                else cfg.subscription_url
+            )
             lines.append(f"• <code>{html.escape(cfg.service_name)}</code>: {url}")
         text = f"✅ <b>{len(results)} سرویس فعال شد!</b>\n\n" + "\n".join(lines)
-        await self.send_message(user_id, text)
+        return await self.send_message(user_id, text)
 
     @staticmethod
     def _service_activated_caption(

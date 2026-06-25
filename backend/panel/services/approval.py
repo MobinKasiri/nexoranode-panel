@@ -4,7 +4,6 @@ import json
 import logging
 from datetime import datetime
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from panel.config import ensure_bot_path, get_plan, get_settings
@@ -23,11 +22,11 @@ class ApprovalError(Exception):
 
 
 async def _credit_referrer(session: AsyncSession, user) -> None:
-    ensure_bot_path()
-    from app.bot.services.referral_reward import credit_referrer_for_purchase
-    from panel.config import resolve_shared_data_dir, get_settings
-
     try:
+        ensure_bot_path()
+        from app.bot.services.referral_reward import credit_referrer_for_purchase
+        from panel.config import resolve_shared_data_dir
+
         await credit_referrer_for_purchase(
             session, user, data_dir=resolve_shared_data_dir(get_settings())
         )
@@ -128,8 +127,9 @@ async def approve_transaction(
 
     await _credit_referrer(session, user)
 
+    notified = False
     try:
-        await telegram.send_purchase_success(user.tg_id, results, plan)
+        notified = await telegram.send_purchase_success(user.tg_id, results, plan)
     except Exception:
         logger.exception("Purchase success notify failed for tx=%s", tx_id)
 
@@ -137,11 +137,17 @@ async def approve_transaction(
         await log_action(
             session, admin_id, "approve_purchase",
             target_type="transaction", target_id=str(tx_id),
+            details="notified" if notified else "notify_failed",
         )
     except Exception:
         logger.exception("Audit log failed for purchase approve tx=%s", tx_id)
 
-    return {"success": True, "type": "purchase", "configs_created": len(results)}
+    return {
+        "success": True,
+        "type": "purchase",
+        "configs_created": len(results),
+        "notified": notified,
+    }
 
 
 async def reject_transaction(

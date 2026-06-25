@@ -169,7 +169,7 @@ async def enrich_config(session: AsyncSession, config) -> dict[str, Any]:
     sub_url = config.subscription_url
     try:
         vpn = await get_vpn_service()
-        sub_url = vpn.sub_url(config.subscription_id)
+        sub_url = vpn.public_sub_url(config.subscription_id, config.subscription_url)
         if sub_url != config.subscription_url:
             from app.db.models import VPNConfig
 
@@ -327,7 +327,7 @@ async def create_config_admin(
     except Exception as exc:
         raise _xui_http_error(exc) from exc
 
-    sub_url = vpn.sub_url(sub_id)
+    sub_url = vpn.public_sub_url(sub_id)
     config = await VPNConfig.create(
         session,
         user_id=body.user_id,
@@ -455,7 +455,7 @@ async def update_config_admin(
         updates["is_active"] = body.enable
     if body.sub_id:
         updates["subscription_id"] = sub_id
-        updates["subscription_url"] = vpn.sub_url(sub_id)
+        updates["subscription_url"] = vpn.public_sub_url(sub_id)
     if body.expiry_date or body.start_after_first_use or body.plan_days is not None:
         updates["expiry_date"] = expiry_dt
 
