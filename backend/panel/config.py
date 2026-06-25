@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     XUI_PASSWORD: str = ""
     XUI_TOKEN: str | None = None
     XUI_SUB_BASE_URL: str = "https://sub.manchesterchocolates.ir/s/"
-    XUI_SUB_CLASH_BASE_URL: str = ""
+    XUI_SUB_CLASH_BASE_URL: str = "https://sub.manchesterchocolates.ir/clash/"
     XUI_INBOUND_FILTER: str = ""
     XUI_START_AFTER_FIRST_USE: bool = True
     XUI_DEFAULT_DURATION_DAYS: int = 30

@@ -166,6 +166,17 @@ async def enrich_config(session: AsyncSession, config) -> dict[str, Any]:
     from app.db.models import User
 
     user = await User.get(session, config.user_id)
+    sub_url = config.subscription_url
+    try:
+        vpn = await get_vpn_service()
+        sub_url = vpn.sub_url(config.subscription_id)
+        if sub_url != config.subscription_url:
+            from app.db.models import VPNConfig
+
+            await VPNConfig.update(session, config.id, subscription_url=sub_url)
+    except Exception:
+        logger.debug("Could not normalize subscription URL for config %s", config.id, exc_info=True)
+
     item: dict[str, Any] = {
         "id": config.id,
         "service_name": config.service_name,
@@ -178,7 +189,7 @@ async def enrich_config(session: AsyncSession, config) -> dict[str, Any]:
         "traffic_limit_bytes": config.traffic_limit_bytes,
         "expiry_date": config.expiry_date.isoformat() if config.expiry_date else None,
         "is_active": config.is_active,
-        "subscription_url": config.subscription_url,
+        "subscription_url": sub_url,
         "panel_email": config.panel_email,
         "panel_uuid": config.panel_uuid,
         "subscription_id": config.subscription_id,

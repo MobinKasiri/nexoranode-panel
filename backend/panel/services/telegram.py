@@ -124,6 +124,15 @@ class TelegramService:
     async def send_purchase_success(
         self, user_id: int, results: list, plan: dict
     ) -> None:
+        from panel.config import ensure_bot_path
+        from panel.services.xui import get_vpn_service
+
+        ensure_bot_path()
+        try:
+            vpn = await get_vpn_service()
+        except Exception:
+            vpn = None
+
         plan_name = plan.get("tier_name", "VIP")
         if len(results) == 1:
             cfg = results[0].config if hasattr(results[0], "config") else results[0]
@@ -132,7 +141,9 @@ class TelegramService:
                 if cfg.expiry_date is None
                 else str(cfg.expiry_date.date())
             )
-            sub_url = cfg.subscription_url
+            sub_url = (
+                vpn.sub_url(cfg.subscription_id) if vpn else cfg.subscription_url
+            )
             caption = self._service_activated_caption(
                 name=cfg.service_name,
                 plan_name=plan_name,
@@ -155,7 +166,8 @@ class TelegramService:
         lines = []
         for r in results:
             cfg = r.config if hasattr(r, "config") else r
-            lines.append(f"• <code>{html.escape(cfg.service_name)}</code>: {cfg.subscription_url}")
+            url = vpn.sub_url(cfg.subscription_id) if vpn else cfg.subscription_url
+            lines.append(f"• <code>{html.escape(cfg.service_name)}</code>: {url}")
         text = f"✅ <b>{len(results)} سرویس فعال شد!</b>\n\n" + "\n".join(lines)
         await self.send_message(user_id, text)
 
