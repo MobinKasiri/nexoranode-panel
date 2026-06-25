@@ -142,9 +142,7 @@ class TelegramService:
                 else str(cfg.expiry_date.date())
             )
             sub_url = (
-                vpn.public_sub_url(cfg.subscription_id, cfg.subscription_url)
-                if vpn
-                else cfg.subscription_url
+                vpn.sub_url(cfg.subscription_id) if vpn else cfg.subscription_url
             )
             caption = self._service_activated_caption(
                 name=cfg.service_name,
@@ -176,9 +174,7 @@ class TelegramService:
         for r in results:
             cfg = r.config if hasattr(r, "config") else r
             url = (
-                vpn.public_sub_url(cfg.subscription_id, cfg.subscription_url)
-                if vpn
-                else cfg.subscription_url
+                vpn.sub_url(cfg.subscription_id) if vpn else cfg.subscription_url
             )
             lines.append(f"• <code>{html.escape(cfg.service_name)}</code>: {url}")
         text = f"✅ <b>{len(results)} سرویس فعال شد!</b>\n\n" + "\n".join(lines)
