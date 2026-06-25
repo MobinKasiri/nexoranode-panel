@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import logging
 
 import aiohttp
@@ -56,6 +57,7 @@ class TelegramService:
         *,
         parse_mode: str = "HTML",
         filename: str = "photo.jpg",
+        reply_markup: dict | None = None,
     ) -> bool:
         if not self.token:
             logger.warning("BOT_TOKEN not set, skipping send_photo")
@@ -66,6 +68,8 @@ class TelegramService:
         if caption:
             form.add_field("caption", caption)
             form.add_field("parse_mode", parse_mode)
+        if reply_markup:
+            form.add_field("reply_markup", json.dumps(reply_markup))
         form.add_field(
             "photo",
             photo_bytes,
@@ -75,6 +79,9 @@ class TelegramService:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, data=form) as resp:
+                    if resp.status != 200:
+                        body = await resp.text()
+                        logger.warning("Telegram sendPhoto HTTP %s: %s", resp.status, body[:300])
                     return resp.status == 200
         except Exception:
             logger.exception("Failed to send Telegram photo to %s", chat_id)
@@ -121,26 +128,74 @@ class TelegramService:
         if len(results) == 1:
             cfg = results[0].config if hasattr(results[0], "config") else results[0]
             expiry = (
-                f"پس از اولین اتصال ({cfg.plan_days} روز)"
+                f"هنوز شروع نشده — شروع {cfg.plan_days} روز پس از اولین اتصال"
                 if cfg.expiry_date is None
                 else str(cfg.expiry_date.date())
             )
-            text = (
-                f"✅ <b>سرویس شما فعال شد!</b>\n\n"
-                f"📛 نام: <code>{cfg.service_name}</code>\n"
-                f"📦 پلن: {plan_name} {cfg.plan_gb}GB / {cfg.plan_days} روز\n"
-                f"📅 انقضا: {expiry}\n\n"
-                f"🔗 لینک اشتراک:\n<code>{cfg.subscription_url}</code>"
+            sub_url = cfg.subscription_url
+            caption = self._service_activated_caption(
+                name=cfg.service_name,
+                plan_name=plan_name,
+                gb=cfg.plan_gb,
+                days=cfg.plan_days,
+                expiry=expiry,
+                sub_url=sub_url,
             )
-        else:
-            lines = []
-            for r in results:
-                cfg = r.config if hasattr(r, "config") else r
-                lines.append(f"• <code>{cfg.service_name}</code>: {cfg.subscription_url}")
-            text = (
-                f"✅ <b>{len(results)} سرویس فعال شد!</b>\n\n" + "\n".join(lines)
+            from panel.utils.qr import make_qr_png
+
+            await self.send_photo(
+                user_id,
+                make_qr_png(sub_url),
+                caption=caption,
+                filename="qr.png",
+                reply_markup=self._service_activated_keyboard(sub_url),
             )
+            return
+
+        lines = []
+        for r in results:
+            cfg = r.config if hasattr(r, "config") else r
+            lines.append(f"• <code>{html.escape(cfg.service_name)}</code>: {cfg.subscription_url}")
+        text = f"✅ <b>{len(results)} سرویس فعال شد!</b>\n\n" + "\n".join(lines)
         await self.send_message(user_id, text)
+
+    @staticmethod
+    def _service_activated_caption(
+        *,
+        name: str,
+        plan_name: str,
+        gb: int,
+        days: int,
+        expiry: str,
+        sub_url: str,
+    ) -> str:
+        return (
+            "🎉 <b>سرویس شما فعال شد!</b>\n\n"
+            "━━━━━━━━━━━━━━━━\n"
+            f"🏷️ <b>نام سرویس:</b> <code>{html.escape(name)}</code>\n"
+            f"📦 <b>پلن:</b> {html.escape(plan_name)} — {gb} گیگ | {days} روز\n"
+            f"⏳ <b>وضعیت:</b> {html.escape(expiry)}\n"
+            "━━━━━━━━━━━━━━━━\n\n"
+            "📱 QR کد را اسکن کنید یا لینک را کپی کنید:\n"
+            f"<code>{html.escape(sub_url)}</code>\n\n"
+            "💡 لینک را در برنامه VPN وارد کنید تا همه لوکیشن‌ها و سرورها خودکار اضافه شوند."
+        )
+
+    @staticmethod
+    def _service_activated_keyboard(sub_url: str) -> dict:
+        return {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "📋 کپی لینک اشتراک",
+                        "copy_text": {"text": sub_url},
+                    },
+                    {"text": "🔗 باز کردن لینک", "url": sub_url},
+                ],
+                [{"text": "📂 مدیریت کانفیگ‌ها", "callback_data": "menu:configs"}],
+                [{"text": "🏠 منوی اصلی", "callback_data": "main_menu"}],
+            ]
+        }
 
     async def send_config_granted(
         self,
@@ -156,57 +211,28 @@ class TelegramService:
         is_active: bool = True,
     ) -> bool:
         """Notify user that an admin created a VPN config for them."""
-        status_line = "✅ فعال" if is_active else "⏸ غیرفعال"
-        inbounds = " · ".join(inbound_remarks or []) or "همه لوکیشن‌های فعال"
+        from panel.utils.qr import make_qr_png
 
-        parts = [
-            "🎁 <b>سرویس v2ray  برای شما فعال شد</b>",
-            "",
-            "یک کانفیگ جدید از طرف پشتیبانی برای حساب شما ایجاد شده است.",
-        ]
-
-        if admin_note and admin_note.strip():
-            parts.extend(
-                [
-                    "",
-                    f"💬 <b>پیام پشتیبانی:</b>",
-                    f"<i>{html.escape(admin_note.strip())}</i>",
-                ]
-            )
-
-        parts.extend(
-            [
-                "",
-                "━━━━━━━━━━━━━━━━",
-                f"📛 <b>نام سرویس:</b> <code>{html.escape(service_name)}</code>",
-                f"📦 <b>حجم:</b> {plan_gb} گیگ  ·  <b>مدت:</b> {plan_days} روز",
-                f"📅 <b>انقضا:</b> {html.escape(expiry_text)}",
-                f"🌐 <b>لوکیشن‌ها:</b> {html.escape(inbounds)}",
-                f"🔘 <b>وضعیت:</b> {status_line}",
-                "",
-                "🔗 <b>لینک اشتراک (همه سرورها):</b>",
-                f"<code>{html.escape(subscription_url)}</code>",
-                "",
-                "💡 لینک را در برنامه VPN وارد کنید یا از دکمه‌های زیر استفاده کنید.",
-                "از منوی ربات → «مدیریت کانفیگ‌ها» هم می‌توانید جزئیات را ببینید.",
-            ]
+        caption = self._service_activated_caption(
+            name=service_name,
+            plan_name="VIP",
+            gb=plan_gb,
+            days=plan_days,
+            expiry=expiry_text,
+            sub_url=subscription_url,
         )
-
-        reply_markup = {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "📋 کپی لینک اشتراک",
-                        "copy_text": {"text": subscription_url},
-                    }
-                ],
-                [{"text": "🔗 باز کردن لینک", "url": subscription_url}],
-            ]
-        }
-        return await self.send_message(
+        if admin_note and admin_note.strip():
+            caption = (
+                "🎁 <b>سرویس v2ray برای شما فعال شد</b>\n\n"
+                f"💬 <b>پیام پشتیبانی:</b> <i>{html.escape(admin_note.strip())}</i>\n\n"
+                + caption.split("\n\n", 1)[-1]
+            )
+        return await self.send_photo(
             chat_id,
-            "\n".join(parts),
-            reply_markup=reply_markup,
+            make_qr_png(subscription_url),
+            caption=caption,
+            filename="qr.png",
+            reply_markup=self._service_activated_keyboard(subscription_url),
         )
 
     async def send_wallet_charged(self, user_id: int, balance: int) -> None:
