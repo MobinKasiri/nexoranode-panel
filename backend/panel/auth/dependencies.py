@@ -20,7 +20,7 @@ async def get_current_admin(
     if auth and auth.startswith("Bearer "):
         token = auth[7:]
     if not token:
-        token = request.cookies.get("access_token")
+        token = request.cookies.get("access_token") or request.cookies.get("panel_token")
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 

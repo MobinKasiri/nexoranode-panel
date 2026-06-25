@@ -2,6 +2,12 @@ const API_BASE = typeof window !== "undefined"
   ? "/api"
   : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000");
 
+function authHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const token = sessionStorage.getItem("panel_access_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 function formatApiError(detail: unknown, fallback: string): string {
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
@@ -27,9 +33,10 @@ async function request<T>(
     ...options,
     credentials: "include",
     headers: isFormData
-      ? { ...(options.headers || {}) }
+      ? { ...authHeaders(), ...(options.headers || {}) }
       : {
           "Content-Type": "application/json",
+          ...authHeaders(),
           ...(options.headers || {}),
         },
   });
@@ -61,7 +68,11 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
 
-  logout: () => fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" }),
+  logout: async () => {
+    const { clearAuthCache } = await import("@/hooks/useAuth");
+    clearAuthCache();
+    return fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
+  },
 
   me: () =>
     request<import("@/lib/permissions").AdminProfile>("/auth/me"),

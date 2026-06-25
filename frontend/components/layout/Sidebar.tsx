@@ -99,6 +99,7 @@ export function Sidebar() {
 
   const logout = async () => {
     clearAuthCache();
+    document.cookie = "panel_token=; path=/; max-age=0";
     await api.logout();
     router.push("/login");
   };

@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     XUI_PASSWORD: str = ""
     XUI_TOKEN: str | None = None
     XUI_SUB_BASE_URL: str = "https://sub.manchesterchocolates.ir/s/"
+    XUI_SUB_CLASH_BASE_URL: str = ""
     XUI_INBOUND_FILTER: str = ""
     XUI_START_AFTER_FIRST_USE: bool = True
     XUI_DEFAULT_DURATION_DAYS: int = 30
@@ -256,6 +257,10 @@ def resolve_xui_settings(settings: Settings | None = None) -> dict:
         "TOKEN": token or None,
         "SUB_BASE_URL": _env_pick(settings, bot_env, "XUI_SUB_BASE_URL", settings.XUI_SUB_BASE_URL)
         or settings.XUI_SUB_BASE_URL,
+        "SUB_CLASH_BASE_URL": _env_pick(
+            settings, bot_env, "XUI_SUB_CLASH_BASE_URL", settings.XUI_SUB_CLASH_BASE_URL
+        )
+        or settings.XUI_SUB_CLASH_BASE_URL,
         "INBOUND_FILTER": tuple(
             p.strip() for p in inbound_filter.split(",") if p.strip()
         ),

@@ -6,6 +6,24 @@ import type { AdminProfile } from "@/lib/permissions";
 
 let cached: AdminProfile | null = null;
 
+const TOKEN_KEY = "panel_access_token";
+
+export function getStoredAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem(TOKEN_KEY);
+}
+
+export function setAuthCache(admin: AdminProfile | null, accessToken?: string) {
+  cached = admin;
+  if (typeof window === "undefined") return;
+  if (accessToken) {
+    sessionStorage.setItem(TOKEN_KEY, accessToken);
+  }
+  if (!admin) {
+    sessionStorage.removeItem(TOKEN_KEY);
+  }
+}
+
 export function useAuth() {
   const [admin, setAdmin] = useState<AdminProfile | null>(cached);
   const [loading, setLoading] = useState(!cached);
@@ -38,4 +56,7 @@ export function useAuth() {
 
 export function clearAuthCache() {
   cached = null;
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem(TOKEN_KEY);
+  }
 }

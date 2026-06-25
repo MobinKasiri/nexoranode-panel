@@ -8,7 +8,7 @@ export function middleware(request: NextRequest) {
   if (PUBLIC.some((p) => pathname.startsWith(p))) return NextResponse.next();
   if (pathname.startsWith("/api/auth")) return NextResponse.next();
 
-  const token = request.cookies.get("access_token");
+  const token = request.cookies.get("access_token") || request.cookies.get("panel_token");
   if (!token && !pathname.startsWith("/login")) {
     return NextResponse.redirect(new URL("/login", request.url));
   }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from slowapi import Limiter
@@ -48,10 +50,21 @@ def _admin_out(admin: AdminUser) -> AdminOut:
     return AdminOut(**data)
 
 
-def _set_auth_cookies(response: Response, access: str, refresh: str) -> None:
+def _cookie_secure(request: Request) -> bool:
+    override = os.getenv("COOKIE_SECURE", "").strip().lower()
+    if override in {"0", "false", "no", "off"}:
+        return False
+    if override in {"1", "true", "yes", "on"}:
+        return True
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    if forwarded:
+        return forwarded == "https"
+    return request.url.scheme == "https"
+
+
+def _set_auth_cookies(request: Request, response: Response, access: str, refresh: str) -> None:
     settings = get_settings()
-    import os
-    secure = os.getenv("ENVIRONMENT", "production") == "production"
+    secure = _cookie_secure(request)
     response.set_cookie(
         "access_token", access, httponly=True, secure=secure, samesite="lax",
         max_age=settings.JWT_EXPIRE_MINUTES * 60, path="/",
@@ -83,7 +96,7 @@ async def login(
         )
     access = create_access_token({"sub": admin.username, "role": admin.role})
     refresh = create_refresh_token({"sub": admin.username})
-    _set_auth_cookies(response, access, refresh)
+    _set_auth_cookies(request, response, access, refresh)
     return TokenResponse(
         access_token=access,
         refresh_token=refresh,
@@ -114,13 +127,13 @@ async def refresh_token(
 
     from panel.auth.security import get_admin_by_username
 
-    admin = await get_admin_by_username(session, payload["sub"])
+    admin = await get_admin_by_username(session, username=payload["sub"])
     if not admin or not admin.is_active:
         raise HTTPException(status_code=401, detail="حساب مدیر مسدود یا غیرفعال است")
 
     access = create_access_token({"sub": admin.username, "role": admin.role})
     new_refresh = create_refresh_token({"sub": admin.username})
-    _set_auth_cookies(response, access, new_refresh)
+    _set_auth_cookies(request, response, access, new_refresh)
     return TokenResponse(
         access_token=access,
         refresh_token=new_refresh,

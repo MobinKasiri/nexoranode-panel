@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { setAuthCache } from "@/hooks/useAuth";
 import toast from "react-hot-toast";
 
 export default function LoginPage() {
@@ -23,8 +24,12 @@ export default function LoginPage() {
          const res = await api.login(username, password);
          const data = await res.json();
          if (!res.ok) throw new Error(data.detail || "خطا در ورود");
+         setAuthCache(data.admin, data.access_token);
+         if (data.access_token) {
+            document.cookie = `panel_token=${encodeURIComponent(data.access_token)}; path=/; max-age=${60 * 60 * 12}; SameSite=Lax`;
+         }
          toast.success(`خوش آمدید ${data.admin?.full_name || username}`);
-         router.push("/dashboard");
+         window.location.href = "/dashboard";
       } catch (err) {
          toast.error(err instanceof Error ? err.message : "خطا در ورود");
       } finally {

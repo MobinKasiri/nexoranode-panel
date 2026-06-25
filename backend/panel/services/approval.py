@@ -25,11 +25,14 @@ class ApprovalError(Exception):
 async def _credit_referrer(session: AsyncSession, user) -> None:
     ensure_bot_path()
     from app.bot.services.referral_reward import credit_referrer_for_purchase
-    from panel.config import get_settings, resolve_shared_data_dir
+    from panel.config import resolve_shared_data_dir, get_settings
 
-    await credit_referrer_for_purchase(
-        session, user, data_dir=resolve_shared_data_dir(get_settings())
-    )
+    try:
+        await credit_referrer_for_purchase(
+            session, user, data_dir=resolve_shared_data_dir(get_settings())
+        )
+    except Exception:
+        logger.exception("Referrer credit failed for user %s (non-fatal)", user.tg_id)
 
 
 async def approve_transaction(
@@ -63,11 +66,17 @@ async def approve_transaction(
             status=TX_CONFIRMED,
             confirmed_at=datetime.utcnow(),
         )
-        await telegram.send_wallet_charged(user.tg_id, new_balance)
-        await log_action(
-            session, admin_id, "approve_wallet_topup",
-            target_type="transaction", target_id=str(tx_id),
-        )
+        try:
+            await telegram.send_wallet_charged(user.tg_id, new_balance)
+        except Exception:
+            logger.exception("Wallet charge notify failed for tx=%s", tx_id)
+        try:
+            await log_action(
+                session, admin_id, "approve_wallet_topup",
+                target_type="transaction", target_id=str(tx_id),
+            )
+        except Exception:
+            logger.exception("Audit log failed for wallet approve tx=%s", tx_id)
         return {"success": True, "type": "wallet_topup"}
 
     if tx.type != TX_PURCHASE:
@@ -110,18 +119,28 @@ async def approve_transaction(
         confirmed_at=datetime.utcnow(),
         config_id=results[0].config.id if results else None,
     )
+
     if intent.get("discount_id"):
         try:
             await record_usage(session, int(intent["discount_id"]), user.tg_id)
         except Exception:
-            logger.exception("Failed to record discount usage")
+            logger.exception("Failed to record discount usage for tx=%s", tx_id)
 
     await _credit_referrer(session, user)
-    await telegram.send_purchase_success(user.tg_id, results, plan)
-    await log_action(
-        session, admin_id, "approve_purchase",
-        target_type="transaction", target_id=str(tx_id),
-    )
+
+    try:
+        await telegram.send_purchase_success(user.tg_id, results, plan)
+    except Exception:
+        logger.exception("Purchase success notify failed for tx=%s", tx_id)
+
+    try:
+        await log_action(
+            session, admin_id, "approve_purchase",
+            target_type="transaction", target_id=str(tx_id),
+        )
+    except Exception:
+        logger.exception("Audit log failed for purchase approve tx=%s", tx_id)
+
     return {"success": True, "type": "purchase", "configs_created": len(results)}
 
 
@@ -144,10 +163,16 @@ async def reject_transaction(
         raise ApprovalError("این تراکنش قبلاً پردازش شده است", 409)
 
     await Transaction.update(session, tx_id, status=TX_REJECTED)
-    await telegram.send_rejection(tx.user_id, reason)
-    await log_action(
-        session, admin_id, "reject_transaction",
-        target_type="transaction", target_id=str(tx_id),
-        details=reason,
-    )
+    try:
+        await telegram.send_rejection(tx.user_id, reason)
+    except Exception:
+        logger.exception("Reject notify failed for tx=%s", tx_id)
+    try:
+        await log_action(
+            session, admin_id, "reject_transaction",
+            target_type="transaction", target_id=str(tx_id),
+            details=reason,
+        )
+    except Exception:
+        logger.exception("Audit log failed for reject tx=%s", tx_id)
     return {"success": True}
