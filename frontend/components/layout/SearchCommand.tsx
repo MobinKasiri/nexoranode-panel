@@ -7,6 +7,8 @@ import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { toPersianDigits } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { canAccessSearchResult } from "@/lib/permissions";
 
 type SearchResult = {
   users: { tg_id: number; username?: string; full_name: string }[];
@@ -17,6 +19,7 @@ type SearchResult = {
 const emptyResult: SearchResult = { users: [], configs: [], transactions: [] };
 
 export function SearchCommand() {
+  const { admin } = useAuth();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [result, setResult] = useState<SearchResult | null>(null);
@@ -124,7 +127,7 @@ export function SearchCommand() {
 
         {!loading && result && hasResults && (
           <div className="space-y-4 max-h-[50vh] overflow-y-auto text-sm">
-            {result.users.length > 0 && (
+            {result.users.length > 0 && canAccessSearchResult(admin, "users") && (
               <section>
                 <h4 className="text-xs text-text-muted mb-2">کاربران</h4>
                 {result.users.map((u) => (
@@ -140,7 +143,7 @@ export function SearchCommand() {
                 ))}
               </section>
             )}
-            {result.configs.length > 0 && (
+            {result.configs.length > 0 && canAccessSearchResult(admin, "configs") && (
               <section>
                 <h4 className="text-xs text-text-muted mb-2">سرویس‌ها</h4>
                 {result.configs.map((c) => (
@@ -155,7 +158,7 @@ export function SearchCommand() {
                 ))}
               </section>
             )}
-            {result.transactions.length > 0 && (
+            {result.transactions.length > 0 && canAccessSearchResult(admin, "transactions") && (
               <section>
                 <h4 className="text-xs text-text-muted mb-2">تراکنش‌های در انتظار</h4>
                 {result.transactions.map((t) => (

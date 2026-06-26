@@ -16,6 +16,7 @@ from panel.auth.permissions import (
     SECTIONS,
     admin_to_dict,
     merge_permissions,
+    normalize_permissions,
 )
 from panel.auth.security import hash_password
 from panel.config import ensure_bot_path, get_settings, load_payment_info, load_plans, plans_diagnostics, resolve_shared_data_dir, save_plans
@@ -138,7 +139,7 @@ class ReferralSettingsBody(BaseModel):
 
 @router.get("/referral")
 async def get_referral_settings(
-    _admin: AdminUser = Depends(require_permission("settings_plans", "read")),
+    _admin: AdminUser = Depends(require_permission("settings_referral", "read")),
 ):
     ensure_bot_path()
     from app.bot.services.referral_settings import load_referral_settings, save_referral_settings
@@ -162,7 +163,7 @@ async def get_referral_settings(
 @router.put("/referral")
 async def update_referral_settings(
     body: ReferralSettingsBody,
-    admin: AdminUser = Depends(require_permission("settings_plans", "write")),
+    admin: AdminUser = Depends(require_permission("settings_referral", "write")),
     session: AsyncSession = Depends(get_db),
 ):
     ensure_bot_path()
@@ -190,7 +191,7 @@ async def update_referral_settings(
 async def upload_referral_image(
     slot: str = Form(...),
     file: UploadFile = File(...),
-    admin: AdminUser = Depends(require_permission("settings_plans", "write")),
+    admin: AdminUser = Depends(require_permission("settings_referral", "write")),
     session: AsyncSession = Depends(get_db),
 ):
     if slot not in ("landing", "ready_post"):
@@ -222,7 +223,7 @@ async def upload_referral_image(
 @router.get("/referral/image/{slot}")
 async def get_referral_image(
     slot: str,
-    _admin: AdminUser = Depends(require_permission("settings_plans", "read")),
+    _admin: AdminUser = Depends(require_permission("settings_referral", "read")),
 ):
     from fastapi.responses import FileResponse
 
@@ -286,7 +287,7 @@ async def create_admin(
 
     preset = body.role_preset if body.role_preset in ROLE_PRESETS or body.role_preset == "custom" else "visitor"
     perms = merge_permissions(preset, body.permissions)
-    perms.pop("settings_admins", None)
+    perms = normalize_permissions(perms)
 
     new_admin = AdminUser(
         username=body.username,
@@ -326,9 +327,8 @@ async def update_admin(
         if preset not in ROLE_PRESETS and preset != "custom":
             preset = "custom"
         perms = merge_permissions(preset, body.permissions or target.permissions)
-        perms["settings_admins"] = "none"
         target.role_preset = preset
-        target.permissions = perms
+        target.permissions = normalize_permissions(perms)
 
     await session.commit()
     await log_action(

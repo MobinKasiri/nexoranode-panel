@@ -53,7 +53,7 @@ const DISCOUNT_TYPE = [
 
 export function FestivalPanel() {
   const { admin } = useAuth();
-  const canWrite = hasPermission(admin, "discounts", "write");
+  const canWrite = hasPermission(admin, "settings_festival", "write");
   const [state, setState] = useState<FestivalState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

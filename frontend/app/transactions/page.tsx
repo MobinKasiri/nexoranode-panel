@@ -23,6 +23,8 @@ import { api } from "@/lib/api";
 import { ReceiptImage } from "@/components/transactions/ReceiptImage";
 import { formatDate, formatToman, toPersianDigits } from "@/lib/utils";
 import type { Transaction } from "@/types";
+import { useAuth } from "@/hooks/useAuth";
+import { hasPermission } from "@/lib/permissions";
 
 const STATUS_FILTERS = [
   { key: "", label: "همه" },
@@ -48,6 +50,8 @@ const PROCESSED_SOURCE_LABELS: Record<string, string> = {
 };
 
 function TransactionsContent() {
+  const { admin } = useAuth();
+  const canWrite = hasPermission(admin, "transactions", "write");
   const searchParams = useSearchParams();
   const { page, limit, queryString, setPage, setLimit, setParams } = useTableQuery(["status", "search"]);
   const [items, setItems] = useState<Transaction[]>([]);
@@ -248,7 +252,7 @@ function TransactionsContent() {
                       <Button size="icon" variant="ghost" aria-label="مشاهده" onClick={() => openDetail(tx)}>
                         <Eye size={16} />
                       </Button>
-                      {tx.status === "pending" && (
+                      {tx.status === "pending" && canWrite && (
                         <>
                           <Button
                             size="icon"
@@ -391,7 +395,7 @@ function TransactionsContent() {
               ) : null}
             </div>
 
-            {detail?.status === "pending" && !detailLoading && (
+            {detail?.status === "pending" && !detailLoading && canWrite && (
               <div className="sticky bottom-0 p-4 border-t border-border bg-surface/95 backdrop-blur flex gap-2">
                 <Button variant="success" className="flex-1" onClick={() => setShowApprove(true)}>تایید</Button>
                 <Button variant="danger" className="flex-1" onClick={() => setShowReject(true)}>رد</Button>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, CreditCard, Users, Shield, Tag, BarChart3, Radio, Settings, LogOut, Menu, X,
-  ChevronDown, Bell, type LucideIcon,
+  ChevronDown, Bell, Gift, PartyPopper, Wrench, type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cn, adminRoleLabel, toPersianDigits } from "@/lib/utils";
@@ -17,7 +17,13 @@ import {
   type SectionKey,
 } from "@/lib/permissions";
 
-type NavItem = { href: string; label: string; icon: LucideIcon; section: SectionKey };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  section: SectionKey;
+  superadminOnly?: boolean;
+};
 
 type NavGroup = { id: string; label: string; items: NavItem[] };
 
@@ -29,11 +35,8 @@ const ALL_GROUPS: NavGroup[] = [
   },
   {
     id: "access",
-    label: "کاربران و دسترسی",
-    items: [
-      { href: "/users", label: "کاربران", icon: Users, section: "users" },
-      { href: "/settings", label: "تنظیمات", icon: Settings, section: "settings_plans" },
-    ],
+    label: "کاربران",
+    items: [{ href: "/users", label: "کاربران", icon: Users, section: "users" }],
   },
   {
     id: "billing",
@@ -50,6 +53,18 @@ const ALL_GROUPS: NavGroup[] = [
     items: [{ href: "/configs", label: "سرویس‌های VPN", icon: Shield, section: "configs" }],
   },
   {
+    id: "manage",
+    label: "مدیریت ربات",
+    items: [
+      { href: "/plans", label: "پلن‌ها", icon: Tag, section: "settings_plans" },
+      { href: "/referral", label: "دعوت دوستان", icon: Gift, section: "settings_referral" },
+      { href: "/festival", label: "جشنواره", icon: PartyPopper, section: "settings_festival" },
+      { href: "/maintenance", label: "تعمیر ربات", icon: Wrench, section: "settings_maintenance" },
+      { href: "/settings", label: "پرداخت", icon: CreditCard, section: "settings_payment" },
+      { href: "/admins", label: "مدیران", icon: Shield, section: "settings_admins", superadminOnly: true },
+    ],
+  },
+  {
     id: "comm",
     label: "ارتباطات",
     items: [{ href: "/broadcast", label: "پیام همگانی", icon: Radio, section: "broadcast" }],
@@ -61,14 +76,7 @@ function filterGroups(admin: ReturnType<typeof useAuth>["admin"]) {
   return ALL_GROUPS.map((g) => ({
     ...g,
     items: g.items.filter((item) => {
-      if (item.href === "/settings") {
-        return (
-          hasPermission(admin, "settings_plans", "read") ||
-          hasPermission(admin, "settings_maintenance", "read") ||
-          hasPermission(admin, "settings_payment", "read") ||
-          admin.is_superadmin
-        );
-      }
+      if (item.superadminOnly) return admin.is_superadmin;
       return hasPermission(admin, item.section, "read");
     }),
   })).filter((g) => g.items.length > 0);
@@ -83,10 +91,14 @@ export function Sidebar() {
   const [activityCount, setActivityCount] = useState(0);
 
   const groups = useMemo(() => filterGroups(admin), [admin]);
+  const showSearch = hasPermission(admin, "dashboard", "read");
 
   useEffect(() => {
     if (!hasPermission(admin, "activity", "read")) return;
-    api.get<{ items: { at?: string; created_at?: string }[] }>("/dashboard/activity?limit=20").then((d) => {
+    const url = hasPermission(admin, "dashboard", "read")
+      ? "/dashboard/activity?limit=20"
+      : "/activity?limit=20";
+    api.get<{ items: { at?: string; created_at?: string }[] }>(url).then((d) => {
       const dayAgo = Date.now() - 86400000;
       setActivityCount(
         d.items.filter((i) => {
@@ -113,9 +125,11 @@ export function Sidebar() {
       <div className="shrink-0 px-4 py-5 border-b border-border">
         <h1 className="text-lg font-bold text-primary">پنل NC VPN</h1>
         <p className="text-xs text-text-muted mt-0.5">پنل مدیریت</p>
-        <div className="mt-4">
-          <SearchCommand />
-        </div>
+        {showSearch && (
+          <div className="mt-4">
+            <SearchCommand />
+          </div>
+        )}
       </div>
 
       <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">

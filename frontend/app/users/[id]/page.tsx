@@ -11,8 +11,12 @@ import { Modal } from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { formatBytes, formatDate, formatToman, toPersianDigits, trafficBarColor, trafficPercent } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { hasPermission } from "@/lib/permissions";
 
 export default function UserDetailPage() {
+  const { admin } = useAuth();
+  const canWrite = hasPermission(admin, "users", "write");
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [user, setUser] = useState<Record<string, unknown> | null>(null);
@@ -59,12 +63,14 @@ export default function UserDetailPage() {
       <Card className="mb-6">
         <h1 className="text-xl font-bold">{user.full_name as string}</h1>
         <p className="text-text-muted text-sm">@{user.username as string} | ID: {user.tg_id as number}</p>
-        <div className="flex flex-wrap gap-2 mt-4">
-          <Button size="sm" onClick={() => setShowBalance(true)}>💰 افزایش موجودی</Button>
-          <Button size="sm" variant="danger" onClick={toggleBan}>
-            {user.is_banned ? "آنبن" : "🚫 بن کردن"}
-          </Button>
-        </div>
+        {canWrite && (
+          <div className="flex flex-wrap gap-2 mt-4">
+            <Button size="sm" onClick={() => setShowBalance(true)}>💰 افزایش موجودی</Button>
+            <Button size="sm" variant="danger" onClick={toggleBan}>
+              {user.is_banned ? "آنبن" : "🚫 بن کردن"}
+            </Button>
+          </div>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-sm">
           <Stat label="موجودی" value={formatToman(user.balance as number)} />
           <Stat label="خریدها" value={toPersianDigits(transactions.length)} />

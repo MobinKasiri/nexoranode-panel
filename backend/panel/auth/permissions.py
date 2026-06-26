@@ -13,11 +13,16 @@ SECTIONS: tuple[str, ...] = (
     "discounts",
     "broadcast",
     "settings_plans",
+    "settings_referral",
+    "settings_festival",
     "settings_maintenance",
     "settings_payment",
     "settings_admins",
     "activity",
 )
+
+# Sections that cannot be granted above read (or none for settings_admins).
+READ_ONLY_SECTIONS: frozenset[str] = frozenset({"settings_payment"})
 
 LEVEL_RANK = {"none": 0, "read": 1, "write": 2}
 
@@ -31,6 +36,8 @@ ROLE_PRESETS: dict[str, dict[str, PermissionLevel]] = {
         "discounts": "read",
         "broadcast": "none",
         "settings_plans": "none",
+        "settings_referral": "none",
+        "settings_festival": "read",
         "settings_maintenance": "none",
         "settings_payment": "read",
         "settings_admins": "none",
@@ -45,6 +52,8 @@ ROLE_PRESETS: dict[str, dict[str, PermissionLevel]] = {
         "discounts": "read",
         "broadcast": "none",
         "settings_plans": "none",
+        "settings_referral": "none",
+        "settings_festival": "read",
         "settings_maintenance": "none",
         "settings_payment": "read",
         "settings_admins": "none",
@@ -59,6 +68,8 @@ ROLE_PRESETS: dict[str, dict[str, PermissionLevel]] = {
         "discounts": "read",
         "broadcast": "none",
         "settings_plans": "none",
+        "settings_referral": "none",
+        "settings_festival": "read",
         "settings_maintenance": "none",
         "settings_payment": "read",
         "settings_admins": "none",
@@ -73,6 +84,8 @@ ROLE_PRESETS: dict[str, dict[str, PermissionLevel]] = {
         "discounts": "none",
         "broadcast": "none",
         "settings_plans": "none",
+        "settings_referral": "none",
+        "settings_festival": "none",
         "settings_maintenance": "none",
         "settings_payment": "read",
         "settings_admins": "none",
@@ -87,6 +100,8 @@ ROLE_PRESETS: dict[str, dict[str, PermissionLevel]] = {
         "discounts": "none",
         "broadcast": "none",
         "settings_plans": "none",
+        "settings_referral": "none",
+        "settings_festival": "none",
         "settings_maintenance": "none",
         "settings_payment": "read",
         "settings_admins": "none",
@@ -102,10 +117,12 @@ SECTION_LABELS_FA: dict[str, str] = {
     "reports": "گزارش‌ها",
     "discounts": "تخفیف‌ها",
     "broadcast": "پیام همگانی",
-    "settings_plans": "تنظیمات — پلن‌ها",
-    "settings_maintenance": "تنظیمات — تعمیر",
-    "settings_payment": "تنظیمات — پرداخت",
-    "settings_admins": "تنظیمات — مدیران",
+    "settings_plans": "پلن‌ها",
+    "settings_referral": "دعوت دوستان",
+    "settings_festival": "جشنواره",
+    "settings_maintenance": "تعمیر ربات",
+    "settings_payment": "پرداخت (فقط خواندن)",
+    "settings_admins": "مدیران (سوپرادمین)",
     "activity": "فعالیت‌ها",
 }
 
@@ -130,6 +147,15 @@ def permissions_from_preset(preset: str) -> dict[str, PermissionLevel]:
     return base
 
 
+def normalize_permissions(perms: dict[str, PermissionLevel]) -> dict[str, PermissionLevel]:
+    out = dict(perms)
+    out["settings_admins"] = "none"
+    for key in READ_ONLY_SECTIONS:
+        if out.get(key) == "write":
+            out[key] = "read"
+    return out
+
+
 def merge_permissions(
     preset: str,
     overrides: dict[str, str] | None,
@@ -139,7 +165,7 @@ def merge_permissions(
         for key, val in overrides.items():
             if key in SECTIONS and val in LEVEL_RANK:
                 perms[key] = val  # type: ignore[assignment]
-    return perms
+    return normalize_permissions(perms)
 
 
 def is_superadmin(admin) -> bool:
@@ -154,7 +180,7 @@ def admin_permissions(admin) -> dict[str, PermissionLevel]:
     for key, val in raw.items():
         if key in SECTIONS and val in LEVEL_RANK:
             perms[key] = val  # type: ignore[assignment]
-    return perms
+    return normalize_permissions(perms)
 
 
 def has_permission(admin, section: str, level: str = "read") -> bool:
@@ -189,6 +215,17 @@ ACTION_LABELS: dict[str, str] = {
     "sync_configs": "همگام‌سازی سرویس‌ها",
     "broadcast": "پیام همگانی",
     "broadcast_photo": "پیام همگانی با تصویر",
+    "patch_discount": "ویرایش کد تخفیف",
+    "update_referral_settings": "بروزرسانی دعوت دوستان",
+    "upload_referral_image": "آپلود تصویر دعوت",
+    "maintenance_offline_default": "بروزرسانی پیام آفلاین",
+    "adjust_balance": "تغییر موجودی کاربر",
+    "send_message": "ارسال پیام به کاربر",
+    "ban_user": "مسدودسازی کاربر",
+    "unban_user": "رفع مسدودیت کاربر",
+    "approve_wallet_topup": "تایید شارژ کیف پول",
+    "approve_purchase": "تایید خرید",
+    "reject_transaction": "رد تراکنش",
 }
 
 

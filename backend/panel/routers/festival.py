@@ -114,7 +114,7 @@ def _public_state(data: dict, stats: dict) -> dict:
 @router.get("")
 async def get_festival(
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(require_permission("discounts", "read")),
+    _admin: AdminUser = Depends(require_permission("settings_festival", "read")),
 ):
     data, _ = _load_settings()
     stats = await _campaign_stats(session, data.get("campaign_id"))
@@ -125,7 +125,7 @@ async def get_festival(
 async def update_festival(
     body: FestivalSettingsBody,
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(require_permission("discounts", "write")),
+    admin: AdminUser = Depends(require_permission("settings_festival", "write")),
 ):
     ensure_bot_path()
     from app.bot.services.festival_settings import (
@@ -193,7 +193,7 @@ async def update_festival(
 @router.post("/reset")
 async def reset_festival_campaign(
     session: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(require_permission("discounts", "write")),
+    admin: AdminUser = Depends(require_permission("settings_festival", "write")),
 ):
     """Start a fresh campaign (new campaign_id, counter resets)."""
     ensure_bot_path()
@@ -218,7 +218,7 @@ async def festival_recipients(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(require_permission("discounts", "read")),
+    _admin: AdminUser = Depends(require_permission("settings_festival", "read")),
 ):
     data, _ = _load_settings()
     campaign_id = data.get("campaign_id")

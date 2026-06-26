@@ -40,6 +40,7 @@ interface PlansEditorProps {
   onChange: (data: PlansData) => void;
   onSave: () => void;
   saving?: boolean;
+  canWrite?: boolean;
 }
 
 function makePlanId(tierId: string, gb: number, days: number) {
@@ -74,7 +75,7 @@ function buildShopPreview(tier: TierData) {
   return { title, subtitle, locs, footer };
 }
 
-export function PlansEditor({ data, onChange, onSave, saving }: PlansEditorProps) {
+export function PlansEditor({ data, onChange, onSave, saving, canWrite = true }: PlansEditorProps) {
   const tiers = useMemo(() => Object.entries(data), [data]);
   const [deleteTarget, setDeleteTarget] = useState<{ tierId: string; index: number; label: string } | null>(null);
 
@@ -148,6 +149,7 @@ export function PlansEditor({ data, onChange, onSave, saving }: PlansEditorProps
   };
 
   return (
+    <div className={!canWrite ? "pointer-events-none opacity-95" : undefined}>
     <div className="space-y-6">
       {tiers.map(([tierId, tier]) => {
         const preview = buildShopPreview(tier);
@@ -322,10 +324,12 @@ export function PlansEditor({ data, onChange, onSave, saving }: PlansEditorProps
       })}
 
       <div className="flex justify-end sticky bottom-4 z-10">
-        <Button onClick={onSave} disabled={saving} className="shadow-lg shadow-primary/20">
-          <Save size={16} className="ml-2" />
-          {saving ? "در حال ذخیره..." : "ذخیره قیمت‌ها"}
-        </Button>
+        {canWrite && (
+          <Button onClick={onSave} disabled={saving} className="shadow-lg shadow-primary/20">
+            <Save size={16} className="ml-2" />
+            {saving ? "در حال ذخیره..." : "ذخیره قیمت‌ها"}
+          </Button>
+        )}
       </div>
 
       <Modal open={deleteTarget !== null} onOpenChange={() => setDeleteTarget(null)} title="حذف پلن">
@@ -341,6 +345,7 @@ export function PlansEditor({ data, onChange, onSave, saving }: PlansEditorProps
           </Button>
         </div>
       </Modal>
+    </div>
     </div>
   );
 }

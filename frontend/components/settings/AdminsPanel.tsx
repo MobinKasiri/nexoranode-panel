@@ -12,6 +12,7 @@ import {
   PRESET_LABELS,
   SECTIONS,
   SECTION_LABELS,
+  SECTION_MAX_LEVEL,
   permissionsFromPreset,
   type AdminProfile,
   type PermissionLevel,
@@ -80,6 +81,9 @@ export function AdminsPanel() {
   }, [selected]);
 
   const setPerm = (section: SectionKey, level: PermissionLevel) => {
+    const max = SECTION_MAX_LEVEL[section];
+    if (max === "none") return;
+    if (max === "read" && level === "write") level = "read";
     setEditPerms((p) => ({ ...p, [section]: level }));
     setEditPreset("custom");
   };
@@ -229,16 +233,22 @@ export function AdminsPanel() {
                     {SECTIONS.filter((s) => s !== "settings_admins").map((section) => (
                       <tr key={section}>
                         <td>{SECTION_LABELS[section]}</td>
-                        {(["none", "read", "write"] as PermissionLevel[]).map((level) => (
+                        {(["none", "read", "write"] as PermissionLevel[]).map((level) => {
+                          const max = SECTION_MAX_LEVEL[section];
+                          const disabled =
+                            (max === "read" && level === "write") || (max === "none" && level !== "none");
+                          return (
                           <td key={level} className="text-center">
                             <input
                               type="radio"
                               name={`perm-${section}`}
                               checked={(editPerms[section] || "none") === level}
+                              disabled={disabled}
                               onChange={() => setPerm(section, level)}
                             />
                           </td>
-                        ))}
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>

@@ -18,6 +18,8 @@ import { TablePagination } from "@/components/ui/TablePagination";
 import { useTableQuery } from "@/hooks/useTableQuery";
 import { api } from "@/lib/api";
 import { cn, discountStatusLabel, formatDate, formatToman, toPersianDigits } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { hasPermission } from "@/lib/permissions";
 
 interface DiscountItem {
   id: number;
@@ -48,6 +50,8 @@ export default function DiscountsPage() {
 }
 
 function DiscountsContent() {
+  const { admin } = useAuth();
+  const canWrite = hasPermission(admin, "discounts", "write");
   const { page, limit, queryString, setPage, setLimit } = useTableQuery();
   const [items, setItems] = useState<DiscountItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -177,10 +181,12 @@ function DiscountsContent() {
         title="کدهای تخفیف"
         description="ایجاد و مدیریت کدهای تخفیف"
         actions={
-          <Button variant="outline" size="sm" onClick={() => setShowForm(!showForm)}>
-            {showForm ? <ChevronUp size={16} className="ml-2" /> : <ChevronDown size={16} className="ml-2" />}
-            {showForm ? "بستن فرم" : "کد جدید"}
-          </Button>
+          canWrite ? (
+            <Button variant="outline" size="sm" onClick={() => setShowForm(!showForm)}>
+              {showForm ? <ChevronUp size={16} className="ml-2" /> : <ChevronDown size={16} className="ml-2" />}
+              {showForm ? "بستن فرم" : "کد جدید"}
+            </Button>
+          ) : undefined
         }
       />
 
@@ -273,6 +279,7 @@ function DiscountsContent() {
                       </Badge>
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
+                      {canWrite && (
                       <Button
                         size="sm"
                         variant="ghost"
@@ -283,6 +290,7 @@ function DiscountsContent() {
                       >
                         <Trash2 size={16} />
                       </Button>
+                      )}
                     </td>
                   </tr>
                 );

@@ -49,7 +49,7 @@ const TEXT_FIELDS: { key: string; label: string; hint: string }[] = [
    },
 ];
 
-export function ReferralSettingsEditor() {
+export function ReferralSettingsEditor({ canWrite = true }: { canWrite?: boolean }) {
    const [data, setData] = useState<ReferralData | null>(null);
    const [saving, setSaving] = useState(false);
    const [uploading, setUploading] = useState<string | null>(null);
@@ -240,6 +240,7 @@ export function ReferralSettingsEditor() {
                         className="h-16 w-16 object-cover rounded-lg border border-border"
                      />
                   )}
+                  {canWrite && (
                   <label className="cursor-pointer inline-flex">
                      <input
                         type="file"
@@ -259,6 +260,7 @@ export function ReferralSettingsEditor() {
                         {uploading === slot ? "در حال آپلود…" : "آپلود تصویر"}
                      </span>
                   </label>
+                  )}
                </div>
             ))}
          </Card>
@@ -282,10 +284,12 @@ export function ReferralSettingsEditor() {
                   />
                </div>
             ))}
-            <Button onClick={save} disabled={saving}>
-               <Save size={16} className="ml-2" />
-               {saving ? "در حال ذخیره…" : "ذخیره تنظیمات دعوت"}
-            </Button>
+            {canWrite && (
+              <Button onClick={save} disabled={saving}>
+                <Save size={16} className="ml-2" />
+                {saving ? "در حال ذخیره…" : "ذخیره تنظیمات دعوت"}
+              </Button>
+            )}
          </Card>
       </div>
    );

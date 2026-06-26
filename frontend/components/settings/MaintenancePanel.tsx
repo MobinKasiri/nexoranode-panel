@@ -68,7 +68,7 @@ function previewRemaining(
   return `${toPersianDigits(hours)} ساعت`;
 }
 
-export function MaintenancePanel() {
+export function MaintenancePanel({ canWrite = true }: { canWrite?: boolean }) {
   const [state, setState] = useState<MaintenanceState | null>(null);
   const [reason, setReason] = useState("updating");
   const [duration, setDuration] = useState(60);
@@ -204,18 +204,22 @@ export function MaintenancePanel() {
             placeholder="خالی = پیام پیش‌فرض سیستم. HTML مجاز است."
           />
           <div className="flex flex-wrap gap-2 mt-3">
-            <Button onClick={saveOfflineDefault} disabled={savingOffline} size="sm">
-              {savingOffline ? "…" : "ذخیره پیام پیش‌فرض"}
-            </Button>
-            {defaultOfflineDraft.trim() && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setDefaultOfflineDraft("")}
-              >
-                بازگشت به پیش‌فرض سیستم
-              </Button>
+            {canWrite && (
+              <>
+                <Button onClick={saveOfflineDefault} disabled={savingOffline} size="sm">
+                  {savingOffline ? "…" : "ذخیره پیام پیش‌فرض"}
+                </Button>
+                {defaultOfflineDraft.trim() && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDefaultOfflineDraft("")}
+                  >
+                    بازگشت به پیش‌فرض سیستم
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </Card>
@@ -250,9 +254,11 @@ export function MaintenancePanel() {
                   dangerouslySetInnerHTML={{ __html: state.message.replace(/\n/g, "<br/>") }}
                 />
               )}
-              <Button variant="danger" onClick={disablePlanned} disabled={savingPlanned}>
-                {savingPlanned ? "…" : "غیرفعال کردن — بازگشت به ربات اصلی"}
-              </Button>
+              {canWrite && (
+                <Button variant="danger" onClick={disablePlanned} disabled={savingPlanned}>
+                  {savingPlanned ? "…" : "غیرفعال کردن — بازگشت به ربات اصلی"}
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-5">
@@ -333,9 +339,11 @@ export function MaintenancePanel() {
                 )}
               </div>
 
-              <Button onClick={enablePlanned} disabled={savingPlanned}>
-                {savingPlanned ? "…" : "فعال‌سازی حالت تعمیر"}
-              </Button>
+              {canWrite && (
+                <Button onClick={enablePlanned} disabled={savingPlanned}>
+                  {savingPlanned ? "…" : "فعال‌سازی حالت تعمیر"}
+                </Button>
+              )}
             </div>
           )}
         </Card>

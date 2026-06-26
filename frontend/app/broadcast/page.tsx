@@ -13,8 +13,12 @@ import { Modal } from "@/components/ui/modal";
 import { api } from "@/lib/api";
 import { toPersianDigits } from "@/lib/utils";
 import type { UserItem } from "@/types";
+import { useAuth } from "@/hooks/useAuth";
+import { hasPermission } from "@/lib/permissions";
 
 export default function BroadcastPage() {
+  const { admin } = useAuth();
+  const canWrite = hasPermission(admin, "broadcast", "write");
   const [message, setMessage] = useState("");
   const [target, setTarget] = useState("all");
   const [count, setCount] = useState(0);
@@ -191,9 +195,11 @@ export default function BroadcastPage() {
           className="rounded-lg border border-border bg-background p-3 mb-4 text-sm min-h-[60px]"
           dangerouslySetInnerHTML={{ __html: message || "<span class='text-text-muted'>پیش‌نمایش…</span>" }}
         />
-        <Button onClick={() => setConfirmOpen(true)} disabled={sending || (!message.trim() && !photo)}>
-          {sending ? "در حال ارسال…" : "ارسال"}
-        </Button>
+        {canWrite && (
+          <Button onClick={() => setConfirmOpen(true)} disabled={sending || (!message.trim() && !photo)}>
+            {sending ? "در حال ارسال…" : "ارسال"}
+          </Button>
+        )}
         {result && (
           <p className="text-sm text-text-secondary mt-4 tabular-nums">
             ارسال موفق: {toPersianDigits(result.sent)} | ناموفق: {toPersianDigits(result.failed)}
