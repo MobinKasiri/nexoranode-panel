@@ -70,12 +70,24 @@ async def seed_initial_admin() -> None:
         result = await session.execute(
             select(AdminUser).where(AdminUser.username == settings.INITIAL_ADMIN_USERNAME)
         )
-        if result.scalar_one_or_none():
+        existing = result.scalar_one_or_none()
+        desired_name = (settings.INITIAL_ADMIN_FULLNAME or "").strip()
+
+        if existing:
+            if desired_name and existing.full_name != desired_name:
+                existing.full_name = desired_name
+                await session.commit()
+                logger.info(
+                    "Synced initial admin %s display name to %r",
+                    settings.INITIAL_ADMIN_USERNAME,
+                    desired_name,
+                )
             return
+
         admin = AdminUser(
             username=settings.INITIAL_ADMIN_USERNAME,
             password_hash=hash_password(settings.INITIAL_ADMIN_PASSWORD),
-            full_name=settings.INITIAL_ADMIN_FULLNAME,
+            full_name=desired_name or settings.INITIAL_ADMIN_USERNAME,
             role="superadmin",
         )
         session.add(admin)
