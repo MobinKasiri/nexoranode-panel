@@ -77,8 +77,11 @@ export const api = {
   me: () =>
     request<import("@/lib/permissions").AdminProfile>("/auth/me"),
 
-  exportTransactions: (status?: string) => {
-    const q = status ? `?status=${status}` : "";
+  exportTransactions: (status?: string, scope?: string) => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (scope) params.set("scope", scope);
+    const q = params.toString() ? `?${params}` : "";
     window.open(`${API_BASE}/transactions/export${q}`, "_blank");
   },
 

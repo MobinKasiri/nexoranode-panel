@@ -33,11 +33,32 @@ const STATUS_FILTERS = [
   { key: "rejected", label: "رد شده" },
 ];
 
+const SCOPE_FILTERS = [
+  { key: "payments", label: "پرداخت خارجی" },
+  { key: "all", label: "همه تراکنش‌ها" },
+];
+
 const TYPE_LABELS: Record<string, string> = {
-  purchase: "خرید پلن",
+  purchase: "خرید سرویس",
+  wallet_topup: "شارژ کیف پول",
   renewal: "تمدید",
-  balance: "شارژ کیف پول",
+  referral: "پاداش معرف",
+  refund: "استرداد",
+  admin_credit: "اعتبار مدیر",
 };
+
+function txTypeLabel(tx: Transaction): string {
+  if (tx.plan) {
+    return `${toPersianDigits(tx.plan.gb)} گیگ / ${toPersianDigits(tx.plan.days)} روز`;
+  }
+  return TYPE_LABELS[tx.type] || tx.type;
+}
+
+function txMethodLabel(tx: Transaction): string {
+  if (tx.payment_method === "card") return "کارت";
+  if (tx.payment_method === "wallet") return "کیف پول (داخلی)";
+  return "—";
+}
 
 const PROCESSED_ACTION_LABELS: Record<string, string> = {
   approved: "تایید شده",
@@ -53,12 +74,13 @@ function TransactionsContent() {
   const { admin } = useAuth();
   const canWrite = hasPermission(admin, "transactions", "write");
   const searchParams = useSearchParams();
-  const { page, limit, queryString, setPage, setLimit, setParams } = useTableQuery(["status", "search"]);
+  const { page, limit, queryString, setPage, setLimit, setParams } = useTableQuery(["status", "search", "scope"]);
   const [items, setItems] = useState<Transaction[]>([]);
   const [total, setTotal] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(searchParams.get("status") || "");
+  const [scope, setScope] = useState(searchParams.get("scope") || "payments");
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const debouncedSearch = useDebounce(search);
   const [selected, setSelected] = useState<Transaction | null>(null);
@@ -75,6 +97,7 @@ function TransactionsContent() {
     try {
       const params = new URLSearchParams(queryString);
       if (status) params.set("status", status);
+      if (scope) params.set("scope", scope);
       if (debouncedSearch) params.set("search", debouncedSearch);
       const data = await api.get<{ items: Transaction[]; total: number; pending_count: number }>(
         `/transactions?${params}`
@@ -87,9 +110,9 @@ function TransactionsContent() {
     } finally {
       setLoading(false);
     }
-  }, [status, debouncedSearch, queryString]);
+  }, [status, scope, debouncedSearch, queryString]);
 
-  useFilterPageReset({ status, search: debouncedSearch }, setParams);
+  useFilterPageReset({ status, scope, search: debouncedSearch }, setParams);
 
   useEffect(() => { load(); }, [load]);
 
@@ -189,15 +212,20 @@ function TransactionsContent() {
     <AppShell>
       <PageHeader
         title="تراکنش‌ها"
-        description="بررسی و تایید پرداخت‌های کاربران"
+        description={
+          scope === "all"
+            ? "تمام تراکنش‌ها شامل خرید با کیف پول (داخلی)"
+            : "پرداخت‌های کارت به کارت و شارژ کیف پول — خرید با موجودی کیف پول نمایش داده نمی‌شود"
+        }
         actions={
-          <Button variant="outline" size="sm" onClick={() => api.exportTransactions(status || undefined)}>
+          <Button variant="outline" size="sm" onClick={() => api.exportTransactions(status || undefined, scope)}>
             <Download size={16} className="ml-2" /> خروجی Excel
           </Button>
         }
       />
 
       <div className="space-y-4 mb-6">
+        <FilterChips options={SCOPE_FILTERS} value={scope} onChange={setScope} />
         <FilterChips options={filterOptions} value={status} onChange={setStatus} />
         <div className="search-input-wrap max-w-md">
           <Search size={16} />
@@ -220,7 +248,7 @@ function TransactionsContent() {
               <tr>
                 <th>#</th>
                 <th>کاربر</th>
-                <th>پلن</th>
+                <th>نوع</th>
                 <th>مبلغ</th>
                 <th>روش</th>
                 <th>زمان</th>
@@ -237,14 +265,13 @@ function TransactionsContent() {
                     <div className="text-text-muted text-xs">@{tx.user?.username || tx.user_id}</div>
                   </td>
                   <td>
-                    {tx.plan ? (
-                      <span>{toPersianDigits(tx.plan.gb)} گیگ / {toPersianDigits(tx.plan.days)} روز</span>
-                    ) : (
-                      <span className="text-text-muted">{TYPE_LABELS[tx.type] || tx.type}</span>
+                    <div>{txTypeLabel(tx)}</div>
+                    {tx.payment_method === "wallet" && (
+                      <span className="text-[10px] text-text-muted">حرکت داخلی کیف پول</span>
                     )}
                   </td>
                   <td className="font-medium">{formatToman(tx.payment_amount || tx.amount)}</td>
-                  <td>{tx.payment_method === "card" ? "کارت" : "کیف پول"}</td>
+                  <td>{txMethodLabel(tx)}</td>
                   <td className="text-text-secondary whitespace-nowrap">{formatDate(tx.created_at)}</td>
                   <td><Badge status={tx.status} /></td>
                   <td onClick={(e) => e.stopPropagation()}>

@@ -68,6 +68,10 @@ async def list_transactions(
     status: str | None = None,
     search: str | None = None,
     tx_type: str | None = Query(None, alias="type"),
+    scope: str = Query(
+        "payments",
+        description="payments = card/external only; all = full ledger including wallet spends",
+    ),
     from_date: str | None = None,
     to_date: str | None = None,
     page: int = Query(1, ge=1),
@@ -77,6 +81,11 @@ async def list_transactions(
 ):
     Transaction, User, _ = _ensure_bot()
     q = select(Transaction).options(selectinload(Transaction.user)).order_by(Transaction.created_at.desc())
+
+    if scope != "all":
+        # Wallet purchases are internal ledger moves after balance was already credited.
+        # This page is for reviewing external money (card) and pending approvals.
+        q = q.where(Transaction.payment_method != "wallet")
 
     if status:
         q = q.where(Transaction.status == status)
@@ -103,6 +112,8 @@ async def list_transactions(
         )
         if status:
             q = q.where(Transaction.status == status)
+        if scope != "all":
+            q = q.where(Transaction.payment_method != "wallet")
         if tx_type:
             q = q.where(Transaction.type == tx_type)
         if from_date:
@@ -135,6 +146,7 @@ async def list_transactions(
 @router.get("/export")
 async def export_transactions(
     status: str | None = None,
+    scope: str = Query("payments"),
     session: AsyncSession = Depends(get_db),
     _admin: AdminUser = Depends(require_permission("transactions", "read")),
 ):
@@ -142,6 +154,8 @@ async def export_transactions(
 
     Transaction, User, _ = _ensure_bot()
     q = select(Transaction).options(selectinload(Transaction.user)).order_by(Transaction.created_at.desc())
+    if scope != "all":
+        q = q.where(Transaction.payment_method != "wallet")
     if status:
         q = q.where(Transaction.status == status)
     result = await session.execute(q.limit(5000))
