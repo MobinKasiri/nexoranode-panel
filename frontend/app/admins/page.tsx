@@ -1,7 +1,6 @@
 "use client";
 
 import { AppShell } from "@/components/layout/Sidebar";
-import { PageHeader } from "@/components/layout/PageHeader";
 import { AdminsPanel } from "@/components/settings/AdminsPanel";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
@@ -20,7 +19,6 @@ export default function AdminsPage() {
 
   return (
     <AppShell>
-      <PageHeader title="مدیران" description="دسترسی‌ها و حساب‌های پنل مدیریت" />
       <AdminsPanel />
     </AppShell>
   );

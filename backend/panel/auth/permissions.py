@@ -241,4 +241,5 @@ def admin_to_dict(admin) -> dict:
         "is_active": admin.is_active,
         "banned_at": admin.banned_at.isoformat() if getattr(admin, "banned_at", None) else None,
         "last_login": admin.last_login.isoformat() if admin.last_login else None,
+        "created_at": admin.created_at.isoformat() if getattr(admin, "created_at", None) else None,
     }

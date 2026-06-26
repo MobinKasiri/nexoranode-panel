@@ -399,13 +399,15 @@ async def remove_admin(
         raise HTTPException(409, "نمی‌توانید خودتان را حذف کنید")
     if target.role == "superadmin":
         raise HTTPException(409, "حذف سوپرادمین مجاز نیست")
-    target.is_active = False
-    await session.commit()
+
+    username = target.username
     await log_action(
         session,
         superadmin.id,
         "remove_admin",
         target_type="admin",
-        target_id=target.username,
+        target_id=username,
     )
-    return {"success": True}
+    await session.delete(target)
+    await session.commit()
+    return {"success": True, "deleted": True, "username": username}

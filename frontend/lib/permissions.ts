@@ -138,6 +138,7 @@ export interface AdminProfile {
   is_active?: boolean;
   banned_at?: string | null;
   last_login?: string | null;
+  created_at?: string | null;
 }
 
 export function hasPermission(
