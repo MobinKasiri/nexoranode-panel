@@ -5,6 +5,14 @@ export interface Admin {
   role: string;
 }
 
+export interface ProcessedBy {
+  name?: string | null;
+  username?: string | null;
+  action: "approved" | "rejected";
+  at?: string | null;
+  source?: "telegram" | "panel" | null;
+}
+
 export interface Transaction {
   id: number;
   user_id: number;
@@ -29,6 +37,7 @@ export interface Transaction {
   plan?: { id: string; gb: number; days: number; price: number; tier_name?: string };
   intent?: Record<string, unknown>;
   user_purchase_count?: number;
+  processed_by?: ProcessedBy | null;
 }
 
 export interface UserItem {

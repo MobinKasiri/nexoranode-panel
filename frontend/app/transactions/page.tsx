@@ -37,6 +37,16 @@ const TYPE_LABELS: Record<string, string> = {
   balance: "شارژ کیف پول",
 };
 
+const PROCESSED_ACTION_LABELS: Record<string, string> = {
+  approved: "تایید شده",
+  rejected: "رد شده",
+};
+
+const PROCESSED_SOURCE_LABELS: Record<string, string> = {
+  telegram: "ربات تلگرام",
+  panel: "پنل مدیریت",
+};
+
 function TransactionsContent() {
   const searchParams = useSearchParams();
   const { page, limit, queryString, setPage, setLimit, setParams } = useTableQuery(["status", "search"]);
@@ -78,6 +88,41 @@ function TransactionsContent() {
   useFilterPageReset({ status, search: debouncedSearch }, setParams);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (status !== "pending") return;
+    const timer = setInterval(load, 30000);
+    return () => clearInterval(timer);
+  }, [status, load]);
+
+  useEffect(() => {
+    const txId = selected?.id;
+    if (!txId || detail?.status !== "pending") return;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const st = await api.get<{ id: number; status: string }>(`/transactions/${txId}/status`);
+        if (cancelled || st.status === "pending") return;
+
+        toast("این تراکنش توسط مدیر دیگری پردازش شد.");
+        const d = await api.get<Transaction>(`/transactions/${txId}`);
+        if (!cancelled) {
+          setDetail(d);
+          setSelected(d);
+          load();
+        }
+      } catch {
+        /* ignore transient poll errors */
+      }
+    };
+
+    const timer = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [selected?.id, detail?.status, load]);
 
   const closePanel = () => {
     setSelected(null);
@@ -298,7 +343,35 @@ function TransactionsContent() {
                     <DetailRow label="روش" value={detail.payment_method === "card" ? "کارت به کارت" : "کیف پول"} />
                     <DetailRow label="زمان" value={formatDate(detail.created_at)} />
                     {detail.service_name && <DetailRow label="نام سرویس" value={detail.service_name} />}
+                    <DetailRow label="وضعیت" value={detail.status === "pending" ? "در انتظار" : detail.status === "confirmed" ? "تایید شده" : "رد شده"} />
                   </Section>
+                  {detail.status !== "pending" && detail.processed_by && (
+                    <Section title="پردازش">
+                      <DetailRow
+                        label="نتیجه"
+                        value={PROCESSED_ACTION_LABELS[detail.processed_by.action] || detail.processed_by.action}
+                      />
+                      <DetailRow
+                        label="توسط"
+                        value={
+                          detail.processed_by.name
+                            ? detail.processed_by.username
+                              ? `${detail.processed_by.name} (@${detail.processed_by.username})`
+                              : detail.processed_by.name
+                            : "—"
+                        }
+                      />
+                      {detail.processed_by.source && (
+                        <DetailRow
+                          label="از طریق"
+                          value={PROCESSED_SOURCE_LABELS[detail.processed_by.source] || detail.processed_by.source}
+                        />
+                      )}
+                      {detail.processed_by.at && (
+                        <DetailRow label="زمان پردازش" value={formatDate(detail.processed_by.at)} />
+                      )}
+                    </Section>
+                  )}
                   {detail.has_receipt && (
                     <Section title="تصویر رسید">
                       <div className="flex flex-wrap gap-4 mb-3 text-xs">

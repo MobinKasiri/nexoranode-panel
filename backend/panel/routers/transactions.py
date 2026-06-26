@@ -14,6 +14,7 @@ from panel.config import ensure_bot_path, get_plan
 from panel.db.models import AdminUser
 from panel.db.session import get_db
 from panel.services.approval import ApprovalError, approve_transaction, reject_transaction
+from panel.services.tx_processed import enrich_processed_info, processed_info_from_tx
 from panel.services.receipt_files import find_local_receipt
 from panel.services.telegram import TelegramService
 
@@ -212,6 +213,8 @@ async def get_transaction(
     data["intent"] = intent
     data["admin_note"] = tx.admin_note
     data["user_purchase_count"] = purchase_count
+    info = processed_info_from_tx(tx)
+    data["processed_by"] = await enrich_processed_info(session, tx, info)
     return data
 
 
@@ -247,6 +250,27 @@ async def get_receipt(
     return Response(content=content, media_type=media)
 
 
+@router.get("/{tx_id}/status")
+async def get_transaction_status(
+    tx_id: int,
+    session: AsyncSession = Depends(get_db),
+    _admin: AdminUser = Depends(require_permission("transactions", "read")),
+):
+    """Lightweight poll endpoint while a pending transaction detail is open."""
+    Transaction, _, _ = _ensure_bot()
+    tx = await Transaction.get(session, tx_id)
+    if not tx:
+        raise HTTPException(404, "تراکنش یافت نشد")
+    info = processed_info_from_tx(tx)
+    processed_by = await enrich_processed_info(session, tx, info)
+    return {
+        "id": tx.id,
+        "status": tx.status,
+        "confirmed_at": tx.confirmed_at.isoformat() if tx.confirmed_at else None,
+        "processed_by": processed_by,
+    }
+
+
 @router.post("/{tx_id}/approve")
 async def approve(
     tx_id: int,
@@ -254,7 +278,7 @@ async def approve(
     admin: AdminUser = Depends(require_permission("transactions", "write")),
 ):
     try:
-        return await approve_transaction(session, tx_id, admin.id)
+        return await approve_transaction(session, tx_id, admin)
     except ApprovalError as e:
         raise HTTPException(e.status_code, e.message) from e
 
@@ -267,6 +291,6 @@ async def reject(
     admin: AdminUser = Depends(require_permission("transactions", "write")),
 ):
     try:
-        return await reject_transaction(session, tx_id, admin.id, body.reason)
+        return await reject_transaction(session, tx_id, admin, body.reason)
     except ApprovalError as e:
         raise HTTPException(e.status_code, e.message) from e

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from panel.config import ensure_bot_path, get_plan, get_settings
+from panel.db.models import AdminUser
 from panel.services.audit import log_action
+from panel.services.bot_admin_sync import sync_tx_processed_from_panel
 from panel.services.telegram import TelegramService
 from panel.services.xui import get_vpn_service
 
@@ -37,7 +39,7 @@ async def _credit_referrer(session: AsyncSession, user) -> None:
 async def approve_transaction(
     session: AsyncSession,
     tx_id: int,
-    admin_id: int,
+    panel_admin: AdminUser,
     telegram: TelegramService | None = None,
 ) -> dict:
     ensure_bot_path()
@@ -57,21 +59,34 @@ async def approve_transaction(
         raise ApprovalError("کاربر یافت نشد", 404)
 
     if tx.type == TX_WALLET_TOPUP:
-        new_balance = user.balance + tx.amount
-        await User.update(session, user.tg_id, balance=new_balance)
-        await Transaction.update(
+        processed_at = datetime.utcnow()
+        claimed = await Transaction.claim_if_pending(
             session,
             tx_id,
             status=TX_CONFIRMED,
-            confirmed_at=datetime.utcnow(),
+            confirmed_at=processed_at,
         )
+        if not claimed:
+            raise ApprovalError("این تراکنش قبلاً پردازش شده است", 409)
+
+        new_balance = user.balance + tx.amount
+        await User.update(session, user.tg_id, balance=new_balance)
+
+        await sync_tx_processed_from_panel(
+            session,
+            tx_id,
+            panel_admin=panel_admin,
+            action="approved",
+            processed_at=processed_at.replace(tzinfo=timezone.utc),
+        )
+
         try:
             await telegram.send_wallet_charged(user.tg_id, new_balance)
         except Exception:
             logger.exception("Wallet charge notify failed for tx=%s", tx_id)
         try:
             await log_action(
-                session, admin_id, "approve_wallet_topup",
+                session, panel_admin.id, "approve_wallet_topup",
                 target_type="transaction", target_id=str(tx_id),
             )
         except Exception:
@@ -111,13 +126,16 @@ async def approve_transaction(
         logger.exception("VPN create failed for tx=%s", tx_id)
         raise ApprovalError(f"خطا در ایجاد سرویس: {e}", 500) from e
 
-    await Transaction.update(
+    processed_at = datetime.utcnow()
+    claimed = await Transaction.claim_if_pending(
         session,
         tx_id,
         status=TX_CONFIRMED,
-        confirmed_at=datetime.utcnow(),
+        confirmed_at=processed_at,
         config_id=results[0].config.id if results else None,
     )
+    if not claimed:
+        raise ApprovalError("این تراکنش قبلاً پردازش شده است", 409)
 
     if intent.get("discount_id"):
         try:
@@ -127,6 +145,14 @@ async def approve_transaction(
 
     await _credit_referrer(session, user)
 
+    await sync_tx_processed_from_panel(
+        session,
+        tx_id,
+        panel_admin=panel_admin,
+        action="approved",
+        processed_at=processed_at.replace(tzinfo=timezone.utc),
+    )
+
     notified = False
     try:
         notified = await telegram.send_purchase_success(user.tg_id, results, plan)
@@ -135,7 +161,7 @@ async def approve_transaction(
 
     try:
         await log_action(
-            session, admin_id, "approve_purchase",
+            session, panel_admin.id, "approve_purchase",
             target_type="transaction", target_id=str(tx_id),
             details="notified" if notified else "notify_failed",
         )
@@ -153,7 +179,7 @@ async def approve_transaction(
 async def reject_transaction(
     session: AsyncSession,
     tx_id: int,
-    admin_id: int,
+    panel_admin: AdminUser,
     reason: str | None = None,
     telegram: TelegramService | None = None,
 ) -> dict:
@@ -168,14 +194,26 @@ async def reject_transaction(
     if tx.status != TX_PENDING:
         raise ApprovalError("این تراکنش قبلاً پردازش شده است", 409)
 
-    await Transaction.update(session, tx_id, status=TX_REJECTED)
+    claimed = await Transaction.claim_if_pending(session, tx_id, status=TX_REJECTED)
+    if not claimed:
+        raise ApprovalError("این تراکنش قبلاً پردازش شده است", 409)
+
+    processed_at = datetime.now(tz=timezone.utc)
+    await sync_tx_processed_from_panel(
+        session,
+        tx_id,
+        panel_admin=panel_admin,
+        action="rejected",
+        processed_at=processed_at,
+    )
+
     try:
         await telegram.send_rejection(tx.user_id, reason)
     except Exception:
         logger.exception("Reject notify failed for tx=%s", tx_id)
     try:
         await log_action(
-            session, admin_id, "reject_transaction",
+            session, panel_admin.id, "reject_transaction",
             target_type="transaction", target_id=str(tx_id),
             details=reason,
         )
