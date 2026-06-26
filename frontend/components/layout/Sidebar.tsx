@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, CreditCard, Users, Shield, Tag, BarChart3, Radio, Settings, LogOut, Menu, X,
+  LayoutDashboard, CreditCard, Users, Shield, Tag, BarChart3, Radio, LogOut, Menu, X,
   ChevronDown, Bell, Gift, PartyPopper, Wrench, type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";

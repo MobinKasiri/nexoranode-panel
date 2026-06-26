@@ -65,42 +65,42 @@ export const PRESET_LABELS: Record<string, string> = {
   custom: "سفارشی",
 };
 
-const presetBase = (overrides: Partial<Record<SectionKey, PermissionLevel>>) =>
+const presetBase = () =>
   Object.fromEntries(SECTIONS.map((s) => [s, "none"])) as Record<SectionKey, PermissionLevel>;
 
 export const ROLE_PRESETS: Record<string, Record<SectionKey, PermissionLevel>> = {
   visitor: {
-    ...presetBase({}),
+    ...presetBase(),
     dashboard: "read", users: "read", transactions: "read", configs: "read",
     reports: "read", discounts: "read", settings_festival: "read",
     settings_payment: "read", activity: "read",
   },
   reporter: {
-    ...presetBase({}),
+    ...presetBase(),
     dashboard: "read", users: "read", transactions: "read", configs: "read",
     reports: "read", discounts: "read", settings_festival: "read",
     settings_payment: "read", activity: "read",
   },
   agent_transactions: {
-    ...presetBase({}),
+    ...presetBase(),
     dashboard: "read", users: "read", transactions: "write", configs: "read",
     reports: "read", discounts: "read", settings_festival: "read",
     settings_payment: "read", activity: "read",
   },
   agent_users: {
-    ...presetBase({}),
+    ...presetBase(),
     dashboard: "read", users: "write", transactions: "read", configs: "read",
     reports: "read", settings_payment: "read", activity: "read",
   },
   agent_configs: {
-    ...presetBase({}),
+    ...presetBase(),
     dashboard: "read", users: "read", transactions: "read", configs: "write",
     reports: "read", settings_payment: "read", activity: "read",
   },
 };
 
 export function permissionsFromPreset(preset: string): Record<SectionKey, PermissionLevel> {
-  const base = presetBase({});
+  const base = presetBase();
   if (ROLE_PRESETS[preset]) Object.assign(base, ROLE_PRESETS[preset]);
   return base;
 }
