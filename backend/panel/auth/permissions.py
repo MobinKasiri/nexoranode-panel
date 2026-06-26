@@ -195,7 +195,8 @@ def has_permission(admin, section: str, level: str = "read") -> bool:
 
 ACTION_LABELS: dict[str, str] = {
     "create_discount": "ایجاد کد تخفیف",
-    "delete_discount": "غیرفعال‌سازی تخفیف",
+    "delete_discount": "حذف کد تخفیف",
+    "deactivate_discount": "غیرفعال‌سازی تخفیف",
     "festival_on": "فعال‌سازی جشنواره",
     "festival_off": "غیرفعال‌سازی جشنواره",
     "festival_reset": "شروع جشنواره جدید",

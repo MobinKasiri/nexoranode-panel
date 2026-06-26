@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { ChevronDown, ChevronUp, Download, Tag, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, Tag, Trash2, Ban } from "lucide-react";
 import { AppShell } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExpiryDateField } from "@/components/discounts/ExpiryDateField";
+import { LimitField, formatLimit, limitToApi } from "@/components/discounts/LimitField";
 import { TablePagination } from "@/components/ui/TablePagination";
 import { useTableQuery } from "@/hooks/useTableQuery";
 import { api } from "@/lib/api";
@@ -28,6 +29,7 @@ interface DiscountItem {
   discount_amount?: number;
   used_count: number;
   max_uses: number;
+  max_uses_per_user: number;
   expires_at?: string;
   is_active: boolean;
   status: string;
@@ -52,6 +54,7 @@ export default function DiscountsPage() {
 function DiscountsContent() {
   const { admin } = useAuth();
   const canWrite = hasPermission(admin, "discounts", "write");
+  const isSuperadmin = Boolean(admin?.is_superadmin);
   const { page, limit, queryString, setPage, setLimit } = useTableQuery();
   const [items, setItems] = useState<DiscountItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -61,8 +64,12 @@ function DiscountsContent() {
   const [percent, setPercent] = useState(true);
   const [value, setValue] = useState("");
   const [maxUses, setMaxUses] = useState("100");
+  const [maxUsesUnlimited, setMaxUsesUnlimited] = useState(false);
+  const [maxUsesPerUser, setMaxUsesPerUser] = useState("1");
+  const [maxUsesPerUserUnlimited, setMaxUsesPerUserUnlimited] = useState(false);
   const [expiresAt, setExpiresAt] = useState("");
   const [formError, setFormError] = useState("");
+  const [deactivateId, setDeactivateId] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -72,6 +79,8 @@ function DiscountsContent() {
     expires_at?: string;
     discount_percent?: number;
     discount_amount?: number;
+    max_uses?: number;
+    max_uses_per_user?: number;
     items: UsageRow[];
     total: number;
     page: number;
@@ -122,22 +131,52 @@ function DiscountsContent() {
       setFormError("مقدار تخفیف معتبر وارد کنید");
       return;
     }
+    const overall = limitToApi(maxUses, maxUsesUnlimited);
+    const perUser = limitToApi(maxUsesPerUser, maxUsesPerUserUnlimited);
+    if (!maxUsesUnlimited && (!overall || overall < 1)) {
+      setFormError("حداکثر استفاده کل را وارد کنید یا نامحدود را انتخاب کنید");
+      return;
+    }
+    if (!maxUsesPerUserUnlimited && (!perUser || perUser < 1)) {
+      setFormError("حداکثر استفاده هر کاربر را وارد کنید یا نامحدود را انتخاب کنید");
+      return;
+    }
     try {
       await api.post("/discounts", {
         code,
         discount_percent: percent ? num : null,
         discount_amount: percent ? null : num,
-        max_uses: parseInt(maxUses, 10),
+        max_uses: overall,
+        max_uses_per_user: perUser,
         expires_at: expiresAt || null,
       });
       toast.success("کد تخفیف ایجاد شد");
       setCode("");
       setValue("");
       setExpiresAt("");
+      setMaxUses("100");
+      setMaxUsesUnlimited(false);
+      setMaxUsesPerUser("1");
+      setMaxUsesPerUserUnlimited(false);
       setShowForm(false);
       load();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "خطا");
+    }
+  };
+
+  const confirmDeactivate = async () => {
+    if (!deactivateId) return;
+    setDeleting(true);
+    try {
+      await api.post(`/discounts/${deactivateId}/deactivate`, {});
+      toast.success("کد تخفیف غیرفعال شد");
+      setDeactivateId(null);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "خطا");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -146,8 +185,12 @@ function DiscountsContent() {
     setDeleting(true);
     try {
       await api.delete(`/discounts/${deleteId}`);
-      toast.success("کد تخفیف غیرفعال شد");
+      toast.success("کد تخفیف حذف شد");
       setDeleteId(null);
+      if (detailId === deleteId) {
+        setDetailId(null);
+        setDetail(null);
+      }
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "خطا");
@@ -219,10 +262,22 @@ function DiscountsContent() {
                 <label className="text-xs text-text-muted block mb-1.5">{percent ? "درصد" : "مبلغ (تومان)"}</label>
                 <Input type="number" min={1} value={value} onChange={(e) => setValue(e.target.value)} required className="font-latin" />
               </div>
-              <div>
-                <label className="text-xs text-text-muted block mb-1.5">حداکثر استفاده (هر کاربر یک‌بار — توسط ربات)</label>
-                <Input type="number" min={1} value={maxUses} onChange={(e) => setMaxUses(e.target.value)} className="font-latin" />
-              </div>
+              <LimitField
+                label="حداکثر استفاده کل"
+                hint="سقف استفاده از این کد توسط همه کاربران"
+                value={maxUses}
+                unlimited={maxUsesUnlimited}
+                onValueChange={setMaxUses}
+                onUnlimitedChange={setMaxUsesUnlimited}
+              />
+              <LimitField
+                label="حداکثر استفاده هر کاربر"
+                hint="هر کاربر چند بار می‌تواند از این کد استفاده کند"
+                value={maxUsesPerUser}
+                unlimited={maxUsesPerUserUnlimited}
+                onValueChange={setMaxUsesPerUser}
+                onUnlimitedChange={setMaxUsesPerUserUnlimited}
+              />
               <div>
                 <label className="text-xs text-text-muted block mb-1.5">تاریخ انقضا</label>
                 <ExpiryDateField value={expiresAt} onChange={setExpiresAt} />
@@ -234,7 +289,10 @@ function DiscountsContent() {
               <p className="text-xs text-text-muted mb-2">پیش‌نمایش</p>
               <p className="font-latin font-bold text-lg">{code || "CODE"}</p>
               <p className="text-primary mt-1">{previewValue}</p>
-              <p className="text-text-muted text-sm mt-2">حداکثر {maxUses ? toPersianDigits(maxUses) : "—"} بار</p>
+              <p className="text-text-muted text-sm mt-2">
+                کل: {maxUsesUnlimited ? "نامحدود" : toPersianDigits(maxUses || "—")} — هر کاربر:{" "}
+                {maxUsesPerUserUnlimited ? "نامحدود" : toPersianDigits(maxUsesPerUser || "—")}
+              </p>
               <p className="text-text-muted text-sm">{expiresAt ? `تا ${formatDate(expiresAt)}` : "بدون انقضا"}</p>
             </div>
           </form>
@@ -252,7 +310,8 @@ function DiscountsContent() {
               <tr>
                 <th>کد</th>
                 <th>نوع</th>
-                <th>استفاده</th>
+                <th>استفاده (کل)</th>
+                <th>سقف هر کاربر</th>
                 <th>انقضا</th>
                 <th>وضعیت</th>
                 <th>عملیات</th>
@@ -271,7 +330,10 @@ function DiscountsContent() {
                     <td>
                       {c.discount_percent ? `${toPersianDigits(c.discount_percent)}٪` : formatToman(c.discount_amount || 0)}
                     </td>
-                    <td>{toPersianDigits(c.used_count)} / {toPersianDigits(c.max_uses)}</td>
+                    <td>
+                      {toPersianDigits(c.used_count)} / {formatLimit(c.max_uses)}
+                    </td>
+                    <td>{formatLimit(c.max_uses_per_user)}</td>
                     <td className="text-text-secondary whitespace-nowrap">{c.expires_at ? formatDate(c.expires_at) : "—"}</td>
                     <td>
                       <Badge status={c.status === "active" ? "confirmed" : "rejected"}>
@@ -279,18 +341,30 @@ function DiscountsContent() {
                       </Badge>
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
-                      {canWrite && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-danger hover:text-danger"
-                        disabled={inactive}
-                        title={inactive ? "کدهای منقضی/غیرفعال قابل حذف مجدد نیستند" : "غیرفعال‌سازی"}
-                        onClick={() => setDeleteId(c.id)}
-                      >
-                        <Trash2 size={16} />
-                      </Button>
-                      )}
+                      <div className="flex gap-1">
+                        {canWrite && c.status === "active" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-warning hover:text-warning"
+                            title="غیرفعال‌سازی"
+                            onClick={() => setDeactivateId(c.id)}
+                          >
+                            <Ban size={16} />
+                          </Button>
+                        )}
+                        {isSuperadmin && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-danger hover:text-danger"
+                            title="حذف کامل"
+                            onClick={() => setDeleteId(c.id)}
+                          >
+                            <Trash2 size={16} />
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -310,14 +384,27 @@ function DiscountsContent() {
       </Card>
 
       <ConfirmDialog
-        open={deleteId !== null}
-        onOpenChange={(o) => !o && setDeleteId(null)}
+        open={deactivateId !== null}
+        onOpenChange={(o) => !o && setDeactivateId(null)}
         title="غیرفعال‌سازی کد تخفیف"
         destructive
         confirmLabel="غیرفعال"
         loading={deleting}
-        onConfirm={confirmDelete}
+        onConfirm={confirmDeactivate}
         description={<p>این کد دیگر توسط ربات پذیرفته نمی‌شود.</p>}
+      />
+
+      <ConfirmDialog
+        open={deleteId !== null}
+        onOpenChange={(o) => !o && setDeleteId(null)}
+        title="حذف کامل کد تخفیف"
+        destructive
+        confirmLabel="حذف"
+        loading={deleting}
+        onConfirm={confirmDelete}
+        description={
+          <p>کد و سوابق استفاده آن برای همیشه از پایگاه داده حذف می‌شود. فقط مدیر کل می‌تواند این کار را انجام دهد.</p>
+        }
       />
 
       <Modal
@@ -333,6 +420,8 @@ function DiscountsContent() {
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div>وضعیت: <Badge status={detail.status === "active" ? "confirmed" : "rejected"}>{discountStatusLabel(detail.status)}</Badge></div>
               <div>انقضا: {detail.expires_at ? formatDate(detail.expires_at) : "—"}</div>
+              <div>سقف کل: {formatLimit(detail.max_uses ?? 0)}</div>
+              <div>سقف هر کاربر: {formatLimit(detail.max_uses_per_user ?? 0)}</div>
             </div>
             <div className="flex justify-between items-center">
               <h3 className="font-medium">استفاده‌ها ({toPersianDigits(detail.total)})</h3>

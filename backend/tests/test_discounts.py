@@ -26,6 +26,11 @@ def test_discount_status_exhausted():
     assert _discount_status(code, datetime.utcnow()) == "exhausted"
 
 
+def test_discount_status_unlimited_never_exhausted():
+    code = MagicMock(is_active=True, expires_at=None, used_count=999, max_uses=0)
+    assert _discount_status(code, datetime.utcnow()) == "active"
+
+
 def test_discount_status_disabled():
     code = MagicMock(is_active=False, expires_at=None, used_count=0, max_uses=10)
     assert _discount_status(code, datetime.utcnow()) == "disabled"
