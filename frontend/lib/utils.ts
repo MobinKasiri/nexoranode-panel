@@ -31,12 +31,33 @@ export function trafficBarColor(pct: number): string {
   return "bg-success";
 }
 
+/** Parse ISO datetime from panel API. Naive values are UTC (DB stores UTC). */
+export function parseApiDate(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
+  const raw = iso.trim();
+  if (!raw) return null;
+
+  // Date-only fields (expiry etc.) — avoid UTC midnight shifting the calendar day.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const d = new Date(`${raw}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  let normalized = raw;
+  if (/T/.test(normalized) && !/[zZ]|[+-]\d{2}(:\d{2})?$/.test(normalized)) {
+    normalized = `${normalized}Z`;
+  }
+
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function formatDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
+  const d = parseApiDate(iso);
+  if (!d) return "—";
   return toPersianDigits(
     d.toLocaleString("fa-IR", {
+      timeZone: "Asia/Tehran",
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -58,9 +79,10 @@ export function discountStatusLabel(status: string): string {
 
 export function remainingPersianFromIso(iso: string | null | undefined): string | null {
   if (!iso) return null;
-  const d = new Date(iso.includes("T") && !iso.endsWith("Z") && !iso.includes("+") ? iso : iso);
+  const d = parseApiDate(iso);
+  if (!d) return null;
   const delta = d.getTime() - Date.now();
-  if (Number.isNaN(d.getTime()) || delta <= 0) return null;
+  if (delta <= 0) return null;
   const minutes = Math.floor(delta / 60000);
   if (minutes < 60) return `${toPersianDigits(minutes)} دقیقه`;
   const hours = Math.floor(minutes / 60);

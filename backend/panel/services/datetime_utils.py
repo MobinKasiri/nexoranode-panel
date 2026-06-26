@@ -16,3 +16,12 @@ def parse_optional_datetime(value: str | None) -> datetime | None:
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt
+
+
+def to_api_iso(dt: datetime | None) -> str | None:
+    """Serialize naive UTC datetime for JSON API (always with Z suffix)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.isoformat() + "Z"

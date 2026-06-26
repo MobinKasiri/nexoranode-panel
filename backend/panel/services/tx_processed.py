@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from panel.config import ensure_bot_path
 from panel.db.models import AdminUser, AuditLog
+from panel.services.datetime_utils import to_api_iso
 
 _TX_ACTIONS = ("approve_purchase", "approve_wallet_topup", "reject_transaction")
 
@@ -48,14 +49,14 @@ def processed_info_from_tx(tx) -> dict[str, Any] | None:
             "name": None,
             "username": None,
             "action": "approved" if tx.status == "confirmed" else "rejected",
-            "at": tx.confirmed_at.isoformat(),
+            "at": to_api_iso(tx.confirmed_at),
             "source": None,
         }
     return {
         "name": None,
         "username": None,
         "action": "rejected" if tx.status == "rejected" else "approved",
-        "at": tx.created_at.isoformat() if tx.created_at else None,
+        "at": to_api_iso(tx.created_at),
         "source": None,
     }
 
@@ -87,7 +88,7 @@ async def enrich_processed_info(
     admin = await session.get(AdminUser, log.admin_id)
     info = dict(info)
     info["action"] = _action_from_audit(log.action)
-    info["at"] = log.created_at.isoformat() if log.created_at else info.get("at")
+    info["at"] = to_api_iso(log.created_at) if log.created_at else info.get("at")
     info["source"] = "panel"
     if admin:
         info["name"] = admin.full_name or admin.username

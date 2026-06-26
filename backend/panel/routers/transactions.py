@@ -14,6 +14,7 @@ from panel.config import ensure_bot_path, get_plan
 from panel.db.models import AdminUser
 from panel.db.session import get_db
 from panel.services.approval import ApprovalError, approve_transaction, reject_transaction
+from panel.services.datetime_utils import to_api_iso
 from panel.services.tx_processed import enrich_processed_info, processed_info_from_tx
 from panel.services.receipt_files import find_local_receipt
 from panel.services.telegram import TelegramService
@@ -49,8 +50,8 @@ def _tx_to_dict(tx, user=None, plan=None) -> dict:
         "discount_code": tx.discount_code,
         "discount_amount": tx.discount_amount,
         "status": tx.status,
-        "created_at": tx.created_at.isoformat() if tx.created_at else None,
-        "confirmed_at": tx.confirmed_at.isoformat() if tx.confirmed_at else None,
+        "created_at": to_api_iso(tx.created_at),
+        "confirmed_at": to_api_iso(tx.confirmed_at),
         "user": {
             "tg_id": user.tg_id,
             "username": user.username,
@@ -280,7 +281,7 @@ async def get_transaction_status(
     return {
         "id": tx.id,
         "status": tx.status,
-        "confirmed_at": tx.confirmed_at.isoformat() if tx.confirmed_at else None,
+        "confirmed_at": to_api_iso(tx.confirmed_at),
         "processed_by": processed_by,
     }
 
