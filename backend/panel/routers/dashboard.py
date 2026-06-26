@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from panel.auth.dependencies import require_permission
-from panel.auth.permissions import ACTION_LABELS
+from panel.auth.permissions import ACTION_LABELS, is_superadmin
 from panel.config import ensure_bot_path
 from panel.db.models import AdminUser, AuditLog
 from panel.db.session import get_db
@@ -116,47 +116,57 @@ async def revenue_chart(
 async def recent_activity(
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    _admin: AdminUser = Depends(require_permission("dashboard", "read")),
+    admin: AdminUser = Depends(require_permission("dashboard", "read")),
 ):
-    ensure_bot_path()
-    from app.db.models import Transaction, User
+    """Recent events for dashboard widget. Non-superadmins see only their own audit log."""
+    events: list[dict] = []
 
-    tx_result = await session.execute(
-        select(Transaction)
-        .order_by(Transaction.created_at.desc())
-        .limit(limit)
-    )
-    txs = tx_result.scalars().all()
+    if is_superadmin(admin):
+        ensure_bot_path()
+        from app.db.models import Transaction, User
 
-    events = []
-    for tx in txs:
-        user = await User.get(session, tx.user_id)
-        uname = f"@{user.username}" if user and user.username else str(tx.user_id)
-        if tx.status == "confirmed":
-            events.append({
-                "type": "approved",
-                "text": f"پرداخت تایید شد — {uname} — {tx.payment_amount:,} تومان",
-                "at": tx.confirmed_at.isoformat() if tx.confirmed_at else tx.created_at.isoformat(),
-                "created_at": tx.confirmed_at.isoformat() if tx.confirmed_at else tx.created_at.isoformat(),
-            })
-        elif tx.status == "rejected":
-            events.append({
-                "type": "rejected",
-                "text": f"پرداخت رد شد — {uname}",
-                "at": tx.created_at.isoformat(),
-                "created_at": tx.created_at.isoformat(),
-            })
-        elif tx.status == "pending":
-            events.append({
-                "type": "pending",
-                "text": f"پرداخت جدید — {uname} — {tx.payment_amount:,} تومان",
-                "at": tx.created_at.isoformat(),
-                "created_at": tx.created_at.isoformat(),
-            })
+        tx_result = await session.execute(
+            select(Transaction)
+            .order_by(Transaction.created_at.desc())
+            .limit(limit)
+        )
+        txs = tx_result.scalars().all()
 
-    audit_result = await session.execute(
-        select(AuditLog).order_by(AuditLog.created_at.desc()).limit(min(limit, 20))
-    )
+        for tx in txs:
+            user = await User.get(session, tx.user_id)
+            uname = f"@{user.username}" if user and user.username else str(tx.user_id)
+            if tx.status == "confirmed":
+                events.append({
+                    "type": "approved",
+                    "text": f"پرداخت تایید شد — {uname} — {tx.payment_amount:,} تومان",
+                    "at": tx.confirmed_at.isoformat() if tx.confirmed_at else tx.created_at.isoformat(),
+                    "created_at": tx.confirmed_at.isoformat() if tx.confirmed_at else tx.created_at.isoformat(),
+                })
+            elif tx.status == "rejected":
+                events.append({
+                    "type": "rejected",
+                    "text": f"پرداخت رد شد — {uname}",
+                    "at": tx.created_at.isoformat(),
+                    "created_at": tx.created_at.isoformat(),
+                })
+            elif tx.status == "pending":
+                events.append({
+                    "type": "pending",
+                    "text": f"پرداخت جدید — {uname} — {tx.payment_amount:,} تومان",
+                    "at": tx.created_at.isoformat(),
+                    "created_at": tx.created_at.isoformat(),
+                })
+
+        audit_q = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(min(limit, 20))
+    else:
+        audit_q = (
+            select(AuditLog)
+            .where(AuditLog.admin_id == admin.id)
+            .order_by(AuditLog.created_at.desc())
+            .limit(limit)
+        )
+
+    audit_result = await session.execute(audit_q)
     for log in audit_result.scalars().all():
         label = ACTION_LABELS.get(log.action, log.action)
         events.append({
