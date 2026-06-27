@@ -274,6 +274,7 @@ class TelegramService:
         from app.bot.i18n import fa as bot_fa
         from app.bot.utils.jalali import to_jalali
         from app.bot.utils.persian import to_persian_digits
+        from app.bot.utils.renewal_pricing import SERVICE_MAX_DAYS
 
         try:
             vpn = await get_vpn_service()
@@ -288,7 +289,7 @@ class TelegramService:
         text = bot_fa.RENEW_SUCCESS.format(
             name=cfg.service_name,
             gb=to_persian_digits(plan.get("gb", 0)),
-            days=to_persian_digits(plan.get("days", 0)),
+            max_days=to_persian_digits(SERVICE_MAX_DAYS),
             expiry=expiry,
             sub_url=sub_url,
         )
