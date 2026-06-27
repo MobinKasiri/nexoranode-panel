@@ -45,7 +45,7 @@ async def dashboard_stats(
             select(func.coalesce(func.sum(Transaction.amount), 0))
             .where(Transaction.status == "confirmed")
             .where(Transaction.amount > 0)
-            .where(Transaction.type.in_(["purchase", "wallet_topup"]))
+            .where(Transaction.type.in_(["purchase", "renew", "wallet_topup"]))
             .where(Transaction.confirmed_at >= yesterday_start)
             .where(Transaction.confirmed_at < today_start)
         )

@@ -11,7 +11,7 @@ from panel.config import ensure_bot_path
 from panel.db.models import AdminUser, AuditLog
 from panel.services.datetime_utils import to_api_iso
 
-_TX_ACTIONS = ("approve_purchase", "approve_wallet_topup", "reject_transaction")
+_TX_ACTIONS = ("approve_purchase", "approve_wallet_topup", "approve_renew", "reject_transaction")
 
 
 def _action_from_audit(action: str) -> str:

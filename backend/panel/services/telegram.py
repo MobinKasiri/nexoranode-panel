@@ -265,6 +265,44 @@ class TelegramService:
         text = f"❌ <b>پرداخت شما رد شد.</b>\n\nدلیل: {reason_text}"
         await self.send_message(user_id, text)
 
+    async def send_renew_success(self, user_id: int, cfg, plan: dict) -> bool:
+        """Notify user after panel-approved renewal (same sub link, extended quota)."""
+        from panel.config import ensure_bot_path
+        from panel.services.xui import get_vpn_service
+
+        ensure_bot_path()
+        from app.bot.i18n import fa as bot_fa
+        from app.bot.utils.jalali import to_jalali
+        from app.bot.utils.persian import to_persian_digits
+
+        try:
+            vpn = await get_vpn_service()
+        except Exception:
+            vpn = None
+
+        expiry = bot_fa.CONFIG_NOT_STARTED
+        if cfg.expiry_date:
+            expiry = to_jalali(cfg.expiry_date)
+
+        sub_url = vpn.sub_url(cfg.subscription_id) if vpn else cfg.subscription_url
+        text = bot_fa.RENEW_SUCCESS.format(
+            name=cfg.service_name,
+            gb=to_persian_digits(plan.get("gb", 0)),
+            days=to_persian_digits(plan.get("days", 0)),
+            expiry=expiry,
+            sub_url=sub_url,
+        )
+        return await self.send_message(
+            user_id,
+            text,
+            reply_markup={
+                "inline_keyboard": [
+                    [{"text": "📂 مدیریت کانفیگ‌ها", "callback_data": "menu:configs"}],
+                    [{"text": "🏠 منوی اصلی", "callback_data": "main_menu"}],
+                ]
+            },
+        )
+
 
 def _media_type_for_path(file_path: str) -> str:
     lower = file_path.lower()

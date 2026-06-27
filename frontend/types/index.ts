@@ -35,6 +35,7 @@ export interface Transaction {
     balance: number;
   };
   plan?: { id: string; gb: number; days: number; price: number; tier_name?: string };
+  config_id?: number | null;
   intent?: Record<string, unknown>;
   user_purchase_count?: number;
   processed_by?: ProcessedBy | null;

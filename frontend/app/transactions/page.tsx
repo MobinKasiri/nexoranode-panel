@@ -40,8 +40,8 @@ const SCOPE_FILTERS = [
 
 const TYPE_LABELS: Record<string, string> = {
   purchase: "خرید سرویس",
+  renew: "تمدید سرویس",
   wallet_topup: "شارژ کیف پول",
-  renewal: "تمدید",
   referral: "پاداش معرف",
   refund: "استرداد",
   admin_credit: "اعتبار مدیر",
@@ -374,6 +374,9 @@ function TransactionsContent() {
                     <DetailRow label="روش" value={detail.payment_method === "card" ? "کارت به کارت" : "کیف پول"} />
                     <DetailRow label="زمان" value={formatDate(detail.created_at)} />
                     {detail.service_name && <DetailRow label="نام سرویس" value={detail.service_name} />}
+                    {detail.type === "renew" && detail.config_id != null && (
+                      <DetailRow label="شناسه کانفیگ" copyValue={detail.config_id} />
+                    )}
                     <DetailRow label="وضعیت" value={detail.status === "pending" ? "در انتظار" : detail.status === "confirmed" ? "تایید شده" : "رد شده"} />
                   </Section>
                   {detail.status !== "pending" && detail.processed_by && (
@@ -448,7 +451,11 @@ function TransactionsContent() {
       )}
 
       <Modal open={showApprove} onOpenChange={setShowApprove} title="تایید تراکنش">
-        <p className="text-text-secondary text-sm mb-4">آیا مطمئن هستید؟ سرویس برای کاربر ایجاد می‌شود.</p>
+        <p className="text-text-secondary text-sm mb-4">
+          {detail?.type === "renew"
+            ? "آیا مطمئن هستید؟ همان سرویس تمدید می‌شود (لینک اشتراک تغییر نمی‌کند)."
+            : "آیا مطمئن هستید؟ سرویس برای کاربر ایجاد می‌شود."}
+        </p>
         <div className="flex gap-2">
           <Button variant="success" onClick={approve} disabled={actionLoading}>
             {actionLoading ? "در حال تایید..." : "بله، تایید کن"}

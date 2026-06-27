@@ -226,6 +226,7 @@ ACTION_LABELS: dict[str, str] = {
     "unban_user": "رفع مسدودیت کاربر",
     "approve_wallet_topup": "تایید شارژ کیف پول",
     "approve_purchase": "تایید خرید",
+    "approve_renew": "تایید تمدید",
     "reject_transaction": "رد تراکنش",
 }
 

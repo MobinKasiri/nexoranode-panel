@@ -21,6 +21,7 @@ PAYMENT_METHOD_LABELS = {
 
 TX_TYPE_LABELS = {
     "purchase": "خرید سرویس",
+    "renew": "تمدید سرویس",
     "wallet_topup": "شارژ کیف پول",
     "referral": "پاداش معرف",
     "refund": "استرداد",

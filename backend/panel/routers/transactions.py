@@ -227,6 +227,7 @@ async def get_transaction(
     data = _tx_to_dict(tx, user, plan)
     data["intent"] = intent
     data["admin_note"] = tx.admin_note
+    data["config_id"] = intent.get("config_id") or tx.config_id
     data["user_purchase_count"] = purchase_count
     info = processed_info_from_tx(tx)
     data["processed_by"] = await enrich_processed_info(session, tx, info)
