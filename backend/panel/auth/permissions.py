@@ -218,6 +218,7 @@ ACTION_LABELS: dict[str, str] = {
     "broadcast_photo": "پیام همگانی با تصویر",
     "patch_discount": "ویرایش کد تخفیف",
     "update_referral_settings": "بروزرسانی دعوت دوستان",
+    "update_renewal_settings": "بروزرسانی تخفیف تمدید",
     "upload_referral_image": "آپلود تصویر دعوت",
     "maintenance_offline_default": "بروزرسانی پیام آفلاین",
     "adjust_balance": "تغییر موجودی کاربر",

@@ -137,6 +137,47 @@ class ReferralSettingsBody(BaseModel):
     images: dict[str, str] | None = None
 
 
+class RenewalSettingsBody(BaseModel):
+    discount_percent: int = Field(ge=0, le=100)
+
+
+@router.get("/renewal")
+async def get_renewal_settings(
+    _admin: AdminUser = Depends(require_permission("settings_plans", "read")),
+):
+    ensure_bot_path()
+    from app.bot.services.renewal_settings import load_renewal_settings, save_renewal_settings
+
+    data_dir = resolve_shared_data_dir()
+    path = data_dir / "renewal.json"
+    if not path.is_file():
+        save_renewal_settings(load_renewal_settings(data_dir), data_dir)
+    return load_renewal_settings(data_dir)
+
+
+@router.put("/renewal")
+async def update_renewal_settings(
+    body: RenewalSettingsBody,
+    admin: AdminUser = Depends(require_permission("settings_plans", "write")),
+    session: AsyncSession = Depends(get_db),
+):
+    ensure_bot_path()
+    from app.bot.services.renewal_settings import save_renewal_settings
+
+    path = save_renewal_settings(
+        {"discount_percent": body.discount_percent},
+        resolve_shared_data_dir(),
+    )
+    await log_action(
+        session,
+        admin.id,
+        "update_renewal_settings",
+        target_type="settings",
+        target_id=str(path),
+    )
+    return {"success": True, "path": str(path), "discount_percent": body.discount_percent}
+
+
 @router.get("/referral")
 async def get_referral_settings(
     _admin: AdminUser = Depends(require_permission("settings_referral", "read")),

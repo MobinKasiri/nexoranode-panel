@@ -6,6 +6,7 @@ import { AppShell } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
 import { PlansEditor, type PlansData } from "@/components/settings/PlansEditor";
+import { RenewalSettingsEditor } from "@/components/settings/RenewalSettingsEditor";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/lib/permissions";
@@ -47,7 +48,10 @@ export default function PlansPage() {
 
   return (
     <AppShell>
-      <PageHeader title="پلن‌ها" description="قیمت‌گذاری و پلن‌های فروش VPN" />
+      <PageHeader title="پلن‌ها" description="قیمت‌گذاری، تخفیف تمدید و پلن‌های فروش VPN" />
+      <div className="space-y-6 mb-6">
+        <RenewalSettingsEditor canWrite={canWrite} />
+      </div>
       {plansData ? (
         <PlansEditor
           data={plansData}
