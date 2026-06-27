@@ -281,16 +281,18 @@ class TelegramService:
         except Exception:
             vpn = None
 
-        expiry = bot_fa.CONFIG_NOT_STARTED
+        expiry_note = bot_fa.DELAYED_START_FMT.format(
+            n=to_persian_digits(SERVICE_MAX_DAYS),
+        )
         if cfg.expiry_date:
-            expiry = to_jalali(cfg.expiry_date)
+            expiry_note = f"انقضا: {to_jalali(cfg.expiry_date)}"
 
         sub_url = vpn.sub_url(cfg.subscription_id) if vpn else cfg.subscription_url
         text = bot_fa.RENEW_SUCCESS.format(
             name=cfg.service_name,
             gb=to_persian_digits(plan.get("gb", 0)),
             max_days=to_persian_digits(SERVICE_MAX_DAYS),
-            expiry=expiry,
+            expiry_note=expiry_note,
             sub_url=sub_url,
         )
         return await self.send_message(
