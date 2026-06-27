@@ -62,11 +62,14 @@ export function RenewalSettingsEditor({ canWrite = true }: { canWrite?: boolean 
         تغییرات بلافاصله در ربات و اعلان‌های انقضا/حجم اعمال می‌شوند.
       </p>
       <div className="max-w-xs">
+        <label className="text-xs text-text-muted block mb-1">
+          درصد تخفیف تمدید
+        </label>
         <Input
-          label="درصد تخفیف تمدید"
           type="number"
           min={0}
           max={100}
+          className="font-latin"
           value={data.discount_percent}
           disabled={!canWrite}
           onChange={(e) =>
