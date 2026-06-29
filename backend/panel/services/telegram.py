@@ -133,7 +133,7 @@ class TelegramService:
         except Exception:
             vpn = None
 
-        plan_name = plan.get("tier_name", "VIP")
+        plan_name = plan.get("tier_name") or self._default_tier_display_name()
         if len(results) == 1:
             cfg = results[0].config if hasattr(results[0], "config") else results[0]
             expiry = (
@@ -179,6 +179,28 @@ class TelegramService:
             lines.append(f"• <code>{html.escape(cfg.service_name)}</code>: {url}")
         text = f"✅ <b>{len(results)} سرویس فعال شد!</b>\n\n" + "\n".join(lines)
         return await self.send_message(user_id, text)
+
+    @staticmethod
+    def _default_tier_display_name() -> str:
+        from panel.config import ensure_bot_path
+
+        ensure_bot_path()
+        from app.bot.i18n import fa
+
+        return fa.TIER_NAME_DEFAULT
+
+    @staticmethod
+    def _resolve_plan_display_name(plan_id: str = "") -> str:
+        from panel.config import ensure_bot_path, get_plan
+
+        ensure_bot_path()
+        from app.bot.utils.plan_labels import tier_display_for_plan_id, tier_display_name
+
+        if plan_id:
+            plan = get_plan(plan_id)
+            if plan:
+                return tier_display_name(plan)
+        return tier_display_for_plan_id(None, None)
 
     @staticmethod
     def _service_activated_caption(
@@ -230,13 +252,16 @@ class TelegramService:
         inbound_remarks: list[str] | None = None,
         admin_note: str | None = None,
         is_active: bool = True,
+        plan_id: str = "",
+        plan_name: str = "",
     ) -> bool:
         """Notify user that an admin created a VPN config for them."""
         from panel.utils.qr import make_qr_png
 
+        display_plan_name = (plan_name or "").strip() or self._resolve_plan_display_name(plan_id)
         caption = self._service_activated_caption(
             name=service_name,
-            plan_name="VIP",
+            plan_name=display_plan_name,
             gb=plan_gb,
             days=plan_days,
             expiry=expiry_text,

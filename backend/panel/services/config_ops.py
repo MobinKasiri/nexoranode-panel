@@ -254,6 +254,7 @@ async def _notify_config_created(
         inbound_remarks=item.get("inbound_remarks"),
         admin_note=body.user_message,
         is_active=bool(item.get("is_active", body.enable)),
+        plan_id=body.plan_id or "",
     )
 
 
