@@ -264,7 +264,7 @@ async def create_config_admin(
     ensure_bot_path()
     from app.bot.services.xui_api import ClientAddPayload
     from app.bot.utils.jalali import add_days_ms, ms_to_datetime, start_after_first_use_ms
-    from app.bot.utils.service_name import panel_email, validate
+    from app.bot.utils.service_name import allocate_panel_email, validate
     from app.db.models import User, VPNConfig
 
     if not validate(body.service_name):
@@ -274,12 +274,12 @@ async def create_config_admin(
     if not user:
         raise HTTPException(404, "کاربر تلگرام یافت نشد")
 
-    if await VPNConfig.name_exists(session, body.service_name):
+    if await VPNConfig.name_exists_for_user(session, body.user_id, body.service_name):
         raise HTTPException(409, "نام سرویس تکراری است")
 
     vpn = await require_vpn_service()
     xui = vpn.xui
-    email = panel_email(body.service_name)
+    email = await allocate_panel_email(session, xui, user.tg_id)
     vless_uuid = body.uuid or str(uuid.uuid4())
     sub_id = body.sub_id or secrets.token_hex(12)
     total_bytes = body.plan_gb * GB
